@@ -4,11 +4,9 @@ use std::path::Path;
 
 use bmp_rust::bmp::BMP;
 
-fn main() {
-  let out_dir = env::var_os("OUT_DIR").unwrap();
-  let dest_path = Path::new(&out_dir).join("bmp.rs");
-  let mut times_new_roman: Vec<(char, Vec<Vec<u8>>, u8)> = Vec::new();
-  for entry in read_dir("./bmps/times-new-roman").unwrap() {
+fn get_font(dir: &str) -> Vec<(char, Vec<Vec<u8>>, u8)> {
+  let mut font: Vec<(char, Vec<Vec<u8>>, u8)> = Vec::new();
+  for entry in read_dir(dir).unwrap() {
     let path = entry.unwrap().path();
     let mut ch: Vec<Vec<u8>> = Vec::new();
     if !path.is_dir() {
@@ -27,11 +25,19 @@ fn main() {
         ch.push(row);
       }
       let path_chars: Vec<char> = path.file_name().unwrap().to_str().unwrap().to_string().chars().collect();
-      times_new_roman.push((path_chars[0], ch, path_chars[1].to_digit(10).unwrap() as u8));
+      font.push((path_chars[0], ch, path_chars[1].to_digit(10).unwrap() as u8));
     }
   }
+  font
+}
+
+fn main() {
+  let out_dir = env::var_os("OUT_DIR").unwrap();
+  let dest_path = Path::new(&out_dir).join("bmp.rs");
+  //
   let fonts = vec![
-    ("times-new-roman", times_new_roman),
+    ("times-new-roman", get_font("./bmps/times-new-roman")),
+    ("_icons", get_font("./bmps/_icons")),
   ];
   let type_annotation = "Vec<(&'static str, Vec<(char, Vec<Vec<u8>>, u8)>)>"; //manually changed every time
   write(

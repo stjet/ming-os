@@ -28,7 +28,7 @@ pub struct FrameBufferWriter {
 
 impl Default for FrameBufferWriter {
   fn default() -> Self {
-    FrameBufferWriter { raw_buffer: None, info: FrameBufferInfo {
+    Self { raw_buffer: None, info: FrameBufferInfo {
       byte_len: 0,
       width: 0,
       height: 0,
@@ -60,11 +60,16 @@ impl FrameBufferWriter {
       .copy_from_slice(bytes);
   }
 
-  //dots and lines
+  //dots
 
   pub fn draw_pixel(&mut self, point: Point, color: RGBColor) {
     let start_pos = (point[1] * self.info.stride + point[0]) * self.info.bytes_per_pixel;
     self._draw_pixel(start_pos, color);
+  }
+  
+  //(lines are rectangles of height 1)
+  pub fn draw_line(&mut self, left: Point, width: usize, color: RGBColor) {
+    self.draw_rect(left, [width, 1], color);
   }
 
   //shapes
@@ -77,7 +82,7 @@ impl FrameBufferWriter {
     };
     let line_bytes = color.repeat(dimensions[0]);
     let mut start_pos = (top_left[1] * self.info.stride + top_left[0]) * self.info.bytes_per_pixel;
-    for row in 0..dimensions[1] {
+    for _row in 0..dimensions[1] {
       /*
        * for _col in 0..dimensions[0] {
         self._draw_pixel(start_pos, color);

@@ -5,7 +5,9 @@
 
 extern crate alloc;
 
+use core::panic::PanicInfo;
 use core::mem::replace;
+use alloc::format;
 
 use bootloader_api::{ entry_point, BootInfo, BootloaderConfig };
 use bootloader_api::config::Mapping;
@@ -29,10 +31,28 @@ use window_manager::init;
 
 mod window_likes;
 
+mod themes;
+
+mod keyboard;
+
+mod serial;
+use serial::SERIAL1;
+
+mod mouse;
+use mouse::mouse_init;
+
+mod messages;
+
 pub fn hlt_loop() -> ! {
   loop {
     x86_64::instructions::hlt();
   }
+}
+
+#[panic_handler]
+fn panic(panic_info: &PanicInfo) -> ! {
+  unsafe { SERIAL1.lock().write_text(&format!("{}", panic_info)); }
+  hlt_loop();
 }
 
 static BOOTLOADER_CONFIG: BootloaderConfig = {
@@ -45,6 +65,9 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
   //double fault interrupts
   gdt::init();
   interrupts::init_idt();
+  //mouse needs to be initalised BEFORE the interrupts come
+  //obvious in hindsight
+  mouse_init();
   //hardware interrupts
   unsafe { interrupts::PICS.lock().initialize() };
   x86_64::instructions::interrupts::enable();
@@ -60,16 +83,9 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
   //framebuffer
   let framebuffer = replace(&mut boot_info.framebuffer, Optional::None);
   let framebuffer: FrameBuffer = framebuffer.into_option().unwrap();
+
+  //set up wm and whatnot
   init(framebuffer);
-  /*without_interrupts(|| {
-  //
-  WRITER.lock().draw_pixel([0, 0], [255, 0, 0]);
-  WRITER.lock().draw_rect([1, 1], [300, 100], [0, 255, 0]);
-  WRITER.lock().draw_text([10, 20], "times-new-roman", "abcdefghijklmnopqrstuvwxyz", [255, 255, 255], [0, 255, 0], 0);
-  WRITER.lock().draw_text([10, 37], "times-new-roman", "0123456789.():{},", [255, 255, 255], [0, 255, 0], 0);
-  WRITER.lock().draw_text([10, 54], "times-new-roman", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", [255, 255, 255], [0, 255, 0], 0);
-  });*/
-  //
 
   hlt_loop();
 }

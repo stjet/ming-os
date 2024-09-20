@@ -6,11 +6,11 @@ use crate::messages::WindowMessage;
 use crate::framebuffer::Dimensions;
 use crate::themes::ThemeInfo;
 
-pub struct DesktopBackground {
+pub struct Taskbar {
   dimensions: Dimensions,
 }
 
-impl WindowLike for DesktopBackground {
+impl WindowLike for Taskbar {
   fn handle_message(&mut self, message: WindowMessage) -> bool {
     match message {
       WindowMessage::Init(dimensions) => {
@@ -23,18 +23,24 @@ impl WindowLike for DesktopBackground {
 
   //properties
   fn subtype(&self) -> WindowLikeType {
-    WindowLikeType::DesktopBackground
+    WindowLikeType::Taskbar
   }
 
   //simple
-  fn draw(&self, _theme_info: &ThemeInfo) -> Vec<DrawInstructions> {
-    vec![DrawInstructions::Rect([0, 0], self.dimensions, [0, 128, 128])]
+  fn draw(&self, theme_info: &ThemeInfo) -> Vec<DrawInstructions> {
+    vec![
+      //top thin white border
+      DrawInstructions::Rect([0, 0], [self.dimensions[0], 2], theme_info.border_left_top),
+      //the actual taskbar background
+      DrawInstructions::Rect([0, 2], [self.dimensions[0], self.dimensions[1] - 2], theme_info.background),
+    ]
   }
 }
 
-impl DesktopBackground {
+impl Taskbar {
   pub fn new() -> Self {
     Self { dimensions: [0, 0] }
   }
 }
+
 
