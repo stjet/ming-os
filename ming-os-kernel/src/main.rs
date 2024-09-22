@@ -31,6 +31,8 @@ use window_manager::init;
 
 mod window_likes;
 
+mod components;
+
 mod themes;
 
 mod keyboard;

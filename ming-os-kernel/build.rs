@@ -34,12 +34,13 @@ fn get_font(dir: &str) -> Vec<(char, Vec<Vec<u8>>, u8)> {
 fn main() {
   let out_dir = env::var_os("OUT_DIR").unwrap();
   let dest_path = Path::new(&out_dir).join("bmp.rs");
-  //
+  //last member of tuple is max height
+  //todo: get font max height programatically, should be pretty easy
   let fonts = vec![
-    ("times-new-roman", get_font("./bmps/times-new-roman")),
-    ("_icons", get_font("./bmps/_icons")),
+    ("times-new-roman", get_font("./bmps/times-new-roman"), 12),
+    ("_icons", get_font("./bmps/_icons"), 5),
   ];
-  let type_annotation = "Vec<(&'static str, Vec<(char, Vec<Vec<u8>>, u8)>)>"; //manually changed every time
+  let type_annotation = "Vec<(&'static str, Vec<(char, Vec<Vec<u8>>, u8)>, u8)>"; //manually changed every time
   write(
     &dest_path,
     format!("use alloc::vec;\npub fn get_fonts() -> {} {{\n  {}\n}}\n", type_annotation, format!("{:?}", fonts).replace("[", "vec!["))

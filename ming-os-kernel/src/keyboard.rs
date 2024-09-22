@@ -49,6 +49,9 @@ pub fn scancode_to_char(scancode: u8) -> Option<KeyChar> {
     0x31 => Some(KeyChar::Press('n')),
     0x32 => Some(KeyChar::Press('m')),
     //
+    0x38 => Some(KeyChar::SpecialPress("alt")),
+    //
+    0xB8 => Some(KeyChar::SpecialRelease("alt")),
     _ => None,
   }
 }

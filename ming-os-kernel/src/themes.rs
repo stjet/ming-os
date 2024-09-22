@@ -11,6 +11,7 @@ pub struct ThemeInfo {
   pub background: RGBColor,
   pub border_left_top: RGBColor,
   pub border_right_bottom: RGBColor,
+  pub text: RGBColor,
   //
 }
 
@@ -19,6 +20,7 @@ const THEME_INFOS: [(Themes, ThemeInfo); 1] = [
     background: [192, 192, 192],
     border_left_top: [255, 255, 255],
     border_right_bottom: [0, 0, 0],
+    text: [0, 0, 0],
     //
   }),
 ];
