@@ -146,6 +146,42 @@ impl FrameBufferWriter {
     }
   }
 
+  //direction is top to bottom
+  pub fn draw_gradient(&mut self, top_left: Point, dimensions: Dimensions, start_color: RGBColor, end_color: RGBColor, steps: usize) {
+    let delta_r = (end_color[0] as f32 - start_color[0] as f32) / steps as f32;
+    let delta_g = (end_color[1] as f32 - start_color[1] as f32) / steps as f32;
+    let delta_b = (end_color[2] as f32 - start_color[2] as f32) / steps as f32;
+    let mut start_pos = (top_left[1] * self.info.stride + top_left[0]) * self.info.bytes_per_pixel;
+    if steps <= dimensions[1] {
+      //rounds down
+      let mut y_per = dimensions[1] / steps;
+      for s in 0..steps {
+        let color;
+        if s == steps - 1 {
+          color = end_color;
+          //the remaining lines are the last one
+          y_per = dimensions[1] - (y_per * steps);
+        } else {
+          color = [(start_color[0] as f32 + (delta_r * s as f32)) as u8, (start_color[1] as f32 + (delta_g * s as f32)) as u8, (start_color[2] as f32 + (delta_b * s as f32)) as u8];
+        };
+        let color = match self.info.pixel_format {
+          PixelFormat::Rgb => color,
+          PixelFormat::Bgr => [color[2], color[1], color[0]],
+          _ => panic!("Not rgb or bgr"),
+        };
+        let line_bytes = if self.info.bytes_per_pixel > 3 {
+          [color[0], color[1], color[2], 255].repeat(dimensions[0])
+        } else {
+          color.repeat(dimensions[0])
+        };
+        for _y in 0..y_per {
+          self._draw_line(start_pos, &line_bytes[..]);
+          start_pos += self.info.stride * self.info.bytes_per_pixel;
+        }
+      }
+    }
+  }
+
   //text
 
   pub fn draw_text(&mut self, top_left: Point, font_name: &str, text: &str, color: RGBColor, bg_color: RGBColor, horiz_spacing: usize) {
@@ -156,6 +192,20 @@ impl FrameBufferWriter {
           let char_width = self._draw_char(top_left, &font, c, color, bg_color).unwrap();
           top_left[0] = top_left[0] + char_width + horiz_spacing;
         }
+      }
+    }
+  }
+
+  //bmps
+
+  pub fn _draw_mingde(&mut self, top_left: Point) {
+    let mut start_pos;
+    let mingde = get_mingde();
+    for row in 0..mingde.len() {
+      start_pos = ((top_left[1] + row) * self.info.stride + top_left[0]) * self.info.bytes_per_pixel;
+      for color in &mingde[row] {
+        self._draw_pixel(start_pos, [color[0], color[1], color[2]]);
+        start_pos += self.info.bytes_per_pixel;
       }
     }
   }

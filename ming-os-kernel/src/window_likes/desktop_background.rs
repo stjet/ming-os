@@ -1,7 +1,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::window_manager::{ DrawInstructions, WindowLike, WindowLikeType };
+use crate::window_manager::{ DrawInstructions, WindowLike, WindowLikeType, TASKBAR_HEIGHT };
 use crate::messages::{ WindowMessage, WindowMessageResponse };
 use crate::framebuffer::Dimensions;
 use crate::themes::ThemeInfo;
@@ -21,14 +21,18 @@ impl WindowLike for DesktopBackground {
     }
   }
 
+  //simple
+  fn draw(&self, _theme_info: &ThemeInfo) -> Vec<DrawInstructions> {
+    vec![DrawInstructions::Rect([0, 0], self.dimensions, [0, 128, 128])]
+  }
+
   //properties
   fn subtype(&self) -> WindowLikeType {
     WindowLikeType::DesktopBackground
   }
 
-  //simple
-  fn draw(&self, _theme_info: &ThemeInfo) -> Vec<DrawInstructions> {
-    vec![DrawInstructions::Rect([0, 0], self.dimensions, [0, 128, 128])]
+  fn ideal_dimensions(&self, dimensions: Dimensions) -> Dimensions {
+    [dimensions[0], dimensions[1] - TASKBAR_HEIGHT]
   }
 }
 

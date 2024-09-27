@@ -8,19 +8,23 @@ pub enum Themes {
 }
 
 pub struct ThemeInfo {
+  pub top: RGBColor,
   pub background: RGBColor,
   pub border_left_top: RGBColor,
   pub border_right_bottom: RGBColor,
   pub text: RGBColor,
+  pub text_top: RGBColor,
   //
 }
 
 const THEME_INFOS: [(Themes, ThemeInfo); 1] = [
   (Themes::Standard, ThemeInfo {
+    top: [0, 0, 128],
     background: [192, 192, 192],
     border_left_top: [255, 255, 255],
     border_right_bottom: [0, 0, 0],
     text: [0, 0, 0],
+    text_top: [255, 255, 255],
     //
   }),
 ];

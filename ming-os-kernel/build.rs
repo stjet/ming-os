@@ -31,6 +31,25 @@ fn get_font(dir: &str) -> Vec<(char, Vec<Vec<u8>>, u8)> {
   font
 }
 
+//the Vec<u8> should be [u8; 3] but thats a job for another day
+fn get_bmp(path: &str) -> Vec<Vec<Vec<u8>>> {
+  let mut bmp: Vec<Vec<Vec<u8>>> = Vec::new();
+  let b = BMP::new_from_file(path);
+  let dib_header = b.get_dib_header().unwrap();
+  let width = dib_header.width as usize;
+  let height = dib_header.height as usize;
+  for y in 0..height {
+    let mut row = Vec::new();
+    for x in 0..width {
+      let pixel_color = b.get_color_of_px(x, y).unwrap();
+      //if black, true
+      row.push(vec![pixel_color[0], pixel_color[1], pixel_color[2]]); //push alpha channel
+    }
+    bmp.push(row);
+  }
+  bmp
+}
+
 fn main() {
   let out_dir = env::var_os("OUT_DIR").unwrap();
   let dest_path = Path::new(&out_dir).join("bmp.rs");
@@ -38,12 +57,13 @@ fn main() {
   //todo: get font max height programatically, should be pretty easy
   let fonts = vec![
     ("times-new-roman", get_font("./bmps/times-new-roman"), 12),
-    ("_icons", get_font("./bmps/_icons"), 5),
   ];
-  let type_annotation = "Vec<(&'static str, Vec<(char, Vec<Vec<u8>>, u8)>, u8)>"; //manually changed every time
+  let type_annotation1 = "Vec<(&'static str, Vec<(char, Vec<Vec<u8>>, u8)>, u8)>";
+  let bmps = get_bmp("./bmps/mingde.bmp");
+  let type_annotation2 = "[[[u8; 3]; 40]; 40]";
   write(
     &dest_path,
-    format!("use alloc::vec;\npub fn get_fonts() -> {} {{\n  {}\n}}\n", type_annotation, format!("{:?}", fonts).replace("[", "vec!["))
+    format!("use alloc::vec;\npub fn get_fonts() -> {} {{\n  {}\n}}\npub fn get_mingde() -> {} {{\n  {}\n}}", type_annotation1, format!("{:?}", fonts).replace("[", "vec!["), type_annotation2, format!("{:?}", bmps))
   ).unwrap();
 }
 

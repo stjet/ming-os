@@ -1,4 +1,5 @@
 use alloc::vec::Vec;
+use alloc::vec;
 use alloc::collections::BTreeMap;
 use alloc::fmt;
 use alloc::boxed::Box;
@@ -13,33 +14,12 @@ use crate::framebuffer::{ FrameBufferWriter, Point, Dimensions, RGBColor };
 use crate::window_likes::desktop_background::DesktopBackground;
 use crate::window_likes::taskbar::Taskbar;
 use crate::themes::{ ThemeInfo, Themes, get_theme_info };
-use crate::mouse::MouseChange;
-use crate::keyboard::KeyChar;
+use crate::keyboard::{ KeyChar, uppercase_or_special };
 use crate::SERIAL1;
 use crate::messages::*;
 
 pub const TASKBAR_HEIGHT: usize = 38;
-
-//also point in button
-pub fn point_in_window(point: Point, top_left: Point, dimensions: Dimensions) -> bool {
-  let bottom_right = [top_left[0] + dimensions[0], top_left[1] + dimensions[1]];
-  return point[0] >= top_left[0] && point[0] <= bottom_right[0] && point[1] >= top_left[1] && point[1] <= bottom_right[1];
-}
-
-/*
-pub fn rect_in_window(rect_top_left: Point, rect_dimensions: Dimensions, top_left: Point, dimensions: Dimensions) -> bool {
-  //see if any of the 4 corners are in rect (works only if window overlaps rect border)
-  //then check if window is completely in rect (if window is smaller than rect)
-  let right = rect_top_left[0] + rect_dimensions[0];
-  let bottom = rect_top_left[1] + rect_dimensions[1];
-  return
-    point_in_window(rect_top_left, top_left, dimensions) ||
-    point_in_window([right, rect_top_left[1]], top_left, dimensions) ||
-    point_in_window([rect_top_left[0], bottom], top_left, dimensions) ||
-    point_in_window([right, bottom], top_left, dimensions) ||
-    (rect_top_left[0] >= top_left[0] && rect_top_left[0] <= right && rect_top_left[1] >= top_left[1] && rect_top_left[1] <= bottom);
-}
-*/
+static mut DEBUG_COUNTER: usize = 0;
 
 lazy_static! {
   static ref WRITER: spin::Mutex<FrameBufferWriter> = spin::Mutex::new(Default::default());
@@ -54,9 +34,9 @@ pub fn init(framebuffer: FrameBuffer) {
 
   WM.lock().init([framebuffer_info.width, framebuffer_info.height]);
 
-  WM.lock().add_window_like(Box::new(DesktopBackground::new()), [0, 0], [framebuffer_info.width, framebuffer_info.height - TASKBAR_HEIGHT]);
+  WM.lock().add_window_like(Box::new(DesktopBackground::new()), [0, 0], None);
   
-  WM.lock().add_window_like(Box::new(Taskbar::new()), [0, framebuffer_info.height - TASKBAR_HEIGHT], [framebuffer_info.width, TASKBAR_HEIGHT]);
+  WM.lock().add_window_like(Box::new(Taskbar::new()), [0, framebuffer_info.height - TASKBAR_HEIGHT], None);
 
   without_interrupts(|| {
     WM.lock().render(None);
@@ -65,19 +45,43 @@ pub fn init(framebuffer: FrameBuffer) {
   //
 }
 
-pub fn keyboard_emit(key_char: KeyChar) {
-  unsafe { SERIAL1.lock().write_text(&format!("{:?}", &key_char)); }
-  WM.lock().handle_message(WindowManagerMessage::KeyChar(key_char));
+pub fn min(one: usize, two: usize) -> usize {
+  if one > two { two } else { one } 
 }
 
-pub fn mouse_emit(mouse_change: MouseChange) {
-  //unsafe { SERIAL1.lock().write_text(&format!("{:?}", &mouse_change)); }
-  WM.lock().handle_message(WindowManagerMessage::MouseChange(mouse_change));
+pub fn keyboard_emit(key_char: KeyChar) {
+  let mut kc = key_char;
+  if let KeyChar::Press(c) = kc {
+    if WM.lock().held_special_keys.contains(&"shift") {
+      kc = KeyChar::Press(uppercase_or_special(c));
+    }
+  }
+  unsafe { SERIAL1.lock().write_text(&format!("{:?}", &kc)); }
+  WM.lock().handle_message(WindowManagerMessage::KeyChar(kc));
+}
+
+pub fn draw_panic(p: &str) {
+  WRITER.lock().draw_rect([0, 0], [200, 10], [0, 255, 0]);
+  WRITER.lock().draw_text([0, 0], "times-new-roman", p, [0, 0, 0], [0, 255, 0], 1);
+}
+
+pub fn debug_write() {
+  let color = match unsafe { DEBUG_COUNTER } % 3 {
+    0 => [255, 0, 0],
+    1 => [0, 255, 0],
+    _ => [0, 0, 255], //2
+  };
+  WRITER.lock().draw_rect([150 + unsafe { DEBUG_COUNTER } * 4, 150], [4, 4], color);
+  unsafe {
+    DEBUG_COUNTER += 1;
+  }
 }
 
 pub enum DrawInstructions {
   Rect(Point, Dimensions, RGBColor),
   Text(Point, &'static str, &'static str, RGBColor, RGBColor), //font and text
+  Gradient(Point, Dimensions, RGBColor, RGBColor, usize),
+  Mingde(Point),
 }
 
 #[derive(PartialEq)]
@@ -94,6 +98,8 @@ pub trait WindowLike {
   //properties
   fn subtype(&self) -> WindowLikeType;
   fn draw(&self, theme_info: &ThemeInfo) -> Vec<DrawInstructions>;
+
+  fn ideal_dimensions(&self, dimensions: Dimensions) -> Dimensions; //needs &self or its not object safe or some bullcrap
 }
 
 pub struct WindowLikeInfo {
@@ -115,21 +121,21 @@ pub struct WindowManager {
   window_infos: Vec<WindowLikeInfo>,
   dimensions: Dimensions,
   theme: Themes,
-  focused_window_id: Option<usize>,
-  mouse_coords: Point,
+  focused_id: usize,
+  //mouse_coords: Point,
   held_special_keys: Vec<&'static str>,
 }
-
-pub const MOUSE_SIZE: [usize; 2] = [5, 5];
 
 impl WindowManager {
   pub fn init(&mut self, dimensions: Dimensions) {
     self.dimensions = dimensions;
   }
 
-  pub fn add_window_like(&mut self, mut window_like: Box<dyn WindowLike + Send>, top_left: Point, dimensions: Dimensions) {
+  pub fn add_window_like(&mut self, mut window_like: Box<dyn WindowLike + Send>, top_left: Point, dimensions: Option<Dimensions>) {
+    let dimensions = dimensions.unwrap_or(window_like.ideal_dimensions(self.dimensions));
     self.id_count = self.id_count + 1;
     let id = self.id_count;
+    self.focused_id = id;
     window_like.handle_message(WindowMessage::Init(dimensions));
     self.window_infos.push(WindowLikeInfo {
       id,
@@ -139,7 +145,9 @@ impl WindowManager {
     });
   }
 
-  //
+  fn get_focused_index(&self) -> Option<usize> {
+    self.window_infos.iter().position(|w| w.id == self.focused_id)
+  }
 
   pub fn handle_message(&mut self, message: WindowManagerMessage) {
     let mut redraw_ids = None;
@@ -148,7 +156,7 @@ impl WindowManager {
         //check if is special key (key releases are guaranteed to be special keys)
         //eg: ctrl, alt, command/windows, shift, or caps lock
         match key_char {
-          KeyChar::Press(char) => {
+          KeyChar::Press(c) => {
             let mut press_response = WindowMessageResponse::DoNothing;
             if self.held_special_keys.contains(&"alt") {
               //keyboard shortcut
@@ -156,17 +164,27 @@ impl WindowManager {
                 ('s', ShortcutType::StartMenu),
                 //
               ]);
-              if let Some(shortcut) = shortcuts.get(&char) {
+              if let Some(shortcut) = shortcuts.get(&c) {
                 if shortcut == &ShortcutType::StartMenu {
                   //send to taskbar
                   let taskbar_index = self.window_infos.iter().position(|w| w.window_like.subtype() == WindowLikeType::Taskbar).unwrap();
-                  press_response = self.window_infos[taskbar_index].window_like.handle_message(WindowMessage::Shortcut(ShortcutType::StartMenu));
+                  press_response = self.window_infos[taskbar_index].window_like.handle_message(WindowMessage::Shortcut(ShortcutType::StartMenu))
                 } else {
                   //
                 }
               }
-            } else {
-              //
+            }
+            //not a shortcut, basically. a regular key press
+            if press_response == WindowMessageResponse::DoNothing {
+              //send to focused window
+              if let Some(focused_index) = self.get_focused_index() {
+                press_response = self.window_infos[focused_index].window_like.handle_message(WindowMessage::KeyPress(KeyPress {
+                  key: c,
+                  held_special_keys: self.held_special_keys.clone(),
+                }));
+                //at most, only the focused window needs to be rerendered
+                redraw_ids = Some(vec![self.window_infos[focused_index].id]);
+              }
             }
             press_response
           },
@@ -183,108 +201,12 @@ impl WindowManager {
           },
         }
       },
-      WindowManagerMessage::MouseChange(mouse_change) => {
-        if mouse_change.x_delta != 0 || mouse_change.y_delta != 0 {
-          //handle mouse move
-          //if the old window the mouse was on and new one differ, everything will need to be redrawn
-          //no, you can't just redraw those two windows, because the mouse is not a point, it is a
-          //square, so there may be infinite visible windows under the mouse, and finding and
-          //redrawing those means redrawing all the windows in between those (order wise) too...
-          //in other words, its easier to redraw everything
-          let old_window_id_top = self.window_infos.iter().rev().find(|w| point_in_window(self.mouse_coords, w.top_left, w.dimensions)).unwrap().id;
-          let old_window_id_bottom = self.window_infos.iter().rev().find(|w| point_in_window([self.mouse_coords[0], self.mouse_coords[1] + MOUSE_SIZE[1]], w.top_left, w.dimensions)).unwrap().id;
-          //new mouse coords
-          self.mouse_coords = [
-            if -mouse_change.x_delta > self.mouse_coords[0] as i16 {
-              0
-            } else {
-              (self.mouse_coords[0] as i16 + mouse_change.x_delta) as usize
-            },
-            if -mouse_change.y_delta > self.mouse_coords[1] as i16 {
-              0
-            } else {
-              (self.mouse_coords[1] as i16 + mouse_change.y_delta) as usize
-            },
-          ];
-          //prevent mouse going off screen
-          if self.mouse_coords[0] >= (self.dimensions[0] - MOUSE_SIZE[0]) {
-            self.mouse_coords[0] = self.dimensions[0] - MOUSE_SIZE[0];
-          }
-          if self.mouse_coords[1] >= (self.dimensions[1] - MOUSE_SIZE[1]) {
-            self.mouse_coords[1] = self.dimensions[1] - MOUSE_SIZE[1];
-          }
-          //and the window the cursor is currently on
-          let mut redraw_ids_ = Vec::new();
-          let new_window_id = self.window_infos.iter().rev().find(|w| point_in_window(self.mouse_coords, w.top_left, w.dimensions)).unwrap().id;
-          redraw_ids_.push(new_window_id);
-          //send mouse move or mouse move outside to focused window
-          let mut focus_response = WindowMessageResponse::DoNothing;
-          if let Some(focused_window_id) = self.focused_window_id {
-            let focused_window = &mut self.window_infos[focused_window_id];
-            if point_in_window(self.mouse_coords, focused_window.top_left, focused_window.dimensions) {
-              focus_response = focused_window.window_like.handle_message(WindowMessage::MouseMove(MouseMove {
-                coords: [
-                  self.mouse_coords[0] + focused_window.top_left[0],
-                  self.mouse_coords[1] + focused_window.top_left[1],
-                ],
-                left: mouse_change.left,
-              }));
-            } else {
-              focus_response = focused_window.window_like.handle_message(WindowMessage::MouseMoveOutside);
-            }
-            if focus_response != WindowMessageResponse::DoNothing {
-              redraw_ids_.push(focused_window.id);
-            }
-          }
-          //see way above, essentially everything will need to be redrawn if mouse just came from a different window
-          if new_window_id == old_window_id_top && new_window_id == old_window_id_bottom {
-            redraw_ids = Some(redraw_ids_);
-          }
-          //because we have to redraw the mouse, must rerender
-          if focus_response == WindowMessageResponse::DoNothing {
-            WindowMessageResponse::JustRerender
-          } else {
-            focus_response
-          }
-        } else {
-          //handle mouse click
-          if mouse_change.left {
-            //get window like that was clicked on.
-            //it will return something, guaranteed because there is always a taskbar and desktop background
-            let mut new_focused_index = self.window_infos.iter().rposition(|w| point_in_window(self.mouse_coords, w.top_left, w.dimensions)).unwrap();
-            let changed_focus = Some(new_focused_index) == self.focused_window_id;
-            self.focused_window_id = Some(new_focused_index);
-            let focused_subtype = &self.window_infos[new_focused_index].window_like.subtype();
-            if focused_subtype == &WindowLikeType::Window || focused_subtype == &WindowLikeType::StartMenu {
-              //remove and push to back so it renders on top
-              let removed = self.window_infos.remove(new_focused_index);
-              self.window_infos.push(removed);
-              new_focused_index = self.window_infos.len() - 1;
-            }
-            let focused_window = &mut self.window_infos[new_focused_index];
-            let focus_response = focused_window.window_like.handle_message(WindowMessage::MouseLeftClick(MouseLeftClick {
-              coords: [
-                self.mouse_coords[0] - focused_window.top_left[0],
-                self.mouse_coords[1] - focused_window.top_left[1],
-              ],
-            }));
-            if changed_focus || focus_response != WindowMessageResponse::DoNothing {
-              if focus_response != WindowMessageResponse::DoNothing {
-                focus_response
-              } else {
-                WindowMessageResponse::JustRerender
-              }
-            } else {
-              WindowMessageResponse::DoNothing
-            }
-          } else {
-            //
-            WindowMessageResponse::DoNothing
-          }
-        }
-      },
       //
     };
+    //requests can result in window openings and closings, etc
+    if response != WindowMessageResponse::JustRerender {
+      redraw_ids = None;
+    }
     if response != WindowMessageResponse::DoNothing {
       match response {
         WindowMessageResponse::Request(request) => self.handle_request(request),
@@ -296,8 +218,19 @@ impl WindowManager {
   
   pub fn handle_request(&mut self, request: WindowManagerRequest) {
     match request {
-      WindowManagerRequest::OpenWindow(w, top_left, dimensions) => {
-        self.add_window_like(w, top_left, dimensions);
+      WindowManagerRequest::OpenWindow(w) => {
+        let ideal_dimensions = w.ideal_dimensions(self.dimensions);
+        let top_left = match w.subtype() {
+          WindowLikeType::StartMenu => [0, self.dimensions[1] - TASKBAR_HEIGHT - ideal_dimensions[1]],
+          _ => [0, 0],
+        };
+        self.add_window_like(w, top_left, Some(ideal_dimensions));
+      },
+      WindowManagerRequest::CloseStartMenu => {
+        let start_menu_index = self.window_infos.iter().position(|w| w.window_like.subtype() == WindowLikeType::StartMenu);
+        if let Some(start_menu_index) = start_menu_index {
+          self.window_infos.remove(start_menu_index);
+        }
       },
     };
   }
@@ -318,10 +251,10 @@ impl WindowManager {
         match instruction {
           DrawInstructions::Rect(top_left, dimensions, color) => {
             let true_top_left = [top_left[0] + window_info.top_left[0], top_left[1] + window_info.top_left[1]];
-            //try and prevent overflows because WRITER will not
+            //try and prevent overflows out of the window
             let true_dimensions = [
-              if dimensions[0] > (window_info.dimensions[0] - top_left[0]) { window_info.dimensions[0] } else { dimensions[0] },
-              if dimensions[1] > (window_info.dimensions[1] - top_left[1]) { window_info.dimensions[1] } else { dimensions[1] },
+              min(dimensions[0], window_info.dimensions[0] - top_left[0]),
+              min(dimensions[1], window_info.dimensions[1] - top_left[1]),
             ];
             WRITER.lock().draw_rect(true_top_left, true_dimensions, color);
           },
@@ -331,12 +264,21 @@ impl WindowManager {
             //
             WRITER.lock().draw_text(true_top_left, font_name, text, color, bg_color, 1);
           },
+          DrawInstructions::Mingde(top_left) => {
+            let true_top_left = [top_left[0] + window_info.top_left[0], top_left[1] + window_info.top_left[1]];
+            //todo: overflows and shit
+            //
+            WRITER.lock()._draw_mingde(true_top_left);
+          },
+          DrawInstructions::Gradient(top_left, dimensions, start_color, end_color, steps) => {
+            let true_top_left = [top_left[0] + window_info.top_left[0], top_left[1] + window_info.top_left[1]];
+            //todo: overflows and shit
+            //
+            WRITER.lock().draw_gradient(true_top_left, dimensions, start_color, end_color, steps);
+          },
         }
       }
     }
-    //draw mouse pointer
-    //must be MOUSE_SIZE
-    WRITER.lock().draw_text(self.mouse_coords, "_icons", "0", [0, 255, 0], [0, 0, 0], 0);
   }
 }
 

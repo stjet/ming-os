@@ -8,30 +8,35 @@ use crate::messages::WindowMessage;
 use crate::window_manager::DrawInstructions;
 
 //we need a text width and height measure function first
-pub enum ButtonAlignment {
+pub enum ToggleButtonAlignment {
   Centre,
   Left,
   Right,
 }
 
-pub struct Button<T> {
+pub struct ToggleButton<T> {
   name_: &'static str,
   top_left: Point,
   size: Dimensions,
   text: &'static str,
   draw_bg: bool,
-  pub inverted: bool,
-  alignment: ButtonAlignment,
+  pub inverted: bool, //whether is it clicked or not
+  alignment: ToggleButtonAlignment,
   click_return: T,
+  unclick_return: T,
 }
 
-impl<T: Clone> Component<T> for Button<T> {
+impl<T: Clone> Component<T> for ToggleButton<T> {
   fn handle_message(&mut self, message: WindowMessage) -> Option<T> {
     match message {
-      WindowMessage::MouseLeftClick(_) => {
-        //we know this left click was for this button, otherwise window wouldn't have given us this message
+      WindowMessage::FocusClick => {
+        //we know this click was for this button, otherwise window wouldn't have given us this message
         self.inverted = !self.inverted;
-        Some(self.click_return.clone())
+        if self.inverted {
+          Some(self.click_return.clone())
+        } else {
+          Some(self.unclick_return.clone())
+        }
       },
       _ => None,
     }
@@ -50,16 +55,15 @@ impl<T: Clone> Component<T> for Button<T> {
       //the background if self.draw_bg
       //DrawInstructions::Rect(),
       //the text (for now, hardcoded top left)
-      DrawInstructions::Text([self.top_left[0] + 4, self.top_left[1] + (self.size[1] - font_height) / 2], "times-new-roman", "Start", theme_info.text, theme_info.background),
+      DrawInstructions::Text([self.top_left[0] + 4, self.top_left[1] + (self.size[1] - font_height) / 2], "times-new-roman", self.text, theme_info.text, theme_info.background),
     ]
   }
 
-  fn point_inside(&self, point: Point) -> bool {
-    let bottom_right = [self.top_left[0] + self.size[0], self.top_left[1] + self.size[1]];
-    return point[0] >= self.top_left[0] && point[0] <= bottom_right[0] && point[1] >= self.top_left[1] && point[1] <= bottom_right[1];
+  //properties
+  fn focusable(&self) -> bool {
+    true
   }
 
-  //properties
   fn clickable(&self) -> bool {
     true
   }
@@ -69,17 +73,18 @@ impl<T: Clone> Component<T> for Button<T> {
   }
 }
 
-impl<T> Button<T> {
-  pub fn new(name_: &'static str, top_left: Point, size: Dimensions, text: &'static str, click_return: T, draw_bg: bool, alignment: Option<ButtonAlignment>) -> Self {
+impl<T> ToggleButton<T> {
+  pub fn new(name_: &'static str, top_left: Point, size: Dimensions, text: &'static str, click_return: T, unclick_return: T, draw_bg: bool, alignment: Option<ToggleButtonAlignment>) -> Self {
     Self {
       name_,
       top_left,
       size,
       text,
       click_return,
+      unclick_return,
       draw_bg,
       inverted: false,
-      alignment: alignment.unwrap_or(ButtonAlignment::Centre),
+      alignment: alignment.unwrap_or(ToggleButtonAlignment::Centre),
     }
   }
 }

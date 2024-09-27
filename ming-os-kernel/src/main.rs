@@ -2,6 +2,7 @@
 #![no_main]
 
 #![feature(abi_x86_interrupt)]
+#![feature(allocator_api)]
 
 extern crate alloc;
 
@@ -22,12 +23,14 @@ mod allocator;
 
 mod gdt;
 
+mod apic;
+
 mod interrupts;
 
 mod framebuffer;
 
 mod window_manager;
-use window_manager::init;
+use window_manager::{ init, draw_panic, debug_write };
 
 mod window_likes;
 
@@ -40,9 +43,6 @@ mod keyboard;
 mod serial;
 use serial::SERIAL1;
 
-mod mouse;
-use mouse::mouse_init;
-
 mod messages;
 
 pub fn hlt_loop() -> ! {
@@ -53,6 +53,7 @@ pub fn hlt_loop() -> ! {
 
 #[panic_handler]
 fn panic(panic_info: &PanicInfo) -> ! {
+  draw_panic(&format!("{}", panic_info));
   unsafe { SERIAL1.lock().write_text(&format!("{}", panic_info)); }
   hlt_loop();
 }
@@ -67,12 +68,7 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
   //double fault interrupts
   gdt::init();
   interrupts::init_idt();
-  //mouse needs to be initalised BEFORE the interrupts come
-  //obvious in hindsight
-  mouse_init();
-  //hardware interrupts
-  unsafe { interrupts::PICS.lock().initialize() };
-  x86_64::instructions::interrupts::enable();
+
   //memory
   let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset.into_option().unwrap());
   let mut mapper = unsafe { memory::init(phys_mem_offset) };
@@ -88,6 +84,14 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
 
   //set up wm and whatnot
   init(framebuffer);
+  debug_write();
+  
+  //lapic or something
+  apic::init(boot_info.rsdp_addr.as_ref().unwrap());
+  debug_write();
+
+  //hardware interrupts
+  x86_64::instructions::interrupts::enable();
 
   hlt_loop();
 }

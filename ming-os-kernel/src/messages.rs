@@ -1,19 +1,19 @@
 use alloc::boxed::Box;
 use alloc::fmt;
+use alloc::vec::Vec;
 
-use crate::mouse::MouseChange;
 use crate::keyboard::KeyChar;
-use crate::framebuffer::{ Dimensions, Point };
+use crate::framebuffer::Dimensions;
 use crate::window_manager::WindowLike;
 
 pub enum WindowManagerMessage {
   KeyChar(KeyChar),
-  MouseChange(MouseChange),
   //
 }
 
 pub enum WindowManagerRequest {
-  OpenWindow(Box<dyn WindowLike + Send>, Point, Dimensions),
+  OpenWindow(Box<dyn WindowLike + Send>),
+  CloseStartMenu,
   //
 }
 
@@ -37,19 +37,10 @@ pub enum WindowMessageResponse {
   DoNothing,
 }
 
-pub struct KeyboardPress {
+pub struct KeyPress {
   pub key: char,
+  pub held_special_keys: Vec<&'static str>,
   //
-}
-
-pub struct MouseMove {
-  pub coords: Point,
-  pub left: bool, //whether left mouse button is down
-  //
-}
-
-pub struct MouseLeftClick {
-  pub coords: Point,
 }
 
 #[derive(PartialEq)]
@@ -60,10 +51,10 @@ pub enum ShortcutType {
 
 pub enum WindowMessage {
   Init(Dimensions),
-  KeyboardPress(KeyboardPress),
-  MouseMove(MouseMove),
-  MouseMoveOutside,
-  MouseLeftClick(MouseLeftClick),
+  KeyPress(KeyPress),
   Shortcut(ShortcutType),
+  Focus,
+  Unfocus,
+  FocusClick,
   //
 }
