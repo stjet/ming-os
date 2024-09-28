@@ -186,11 +186,16 @@ impl FrameBufferWriter {
 
   pub fn draw_text(&mut self, top_left: Point, font_name: &str, text: &str, color: RGBColor, bg_color: RGBColor, horiz_spacing: usize) {
     let mut top_left = top_left;
+    //todo, config space
     for font in &*FONTS {
       if font.0 == font_name {
         for c in text.chars() {
-          let char_width = self._draw_char(top_left, &font, c, color, bg_color).unwrap();
-          top_left[0] = top_left[0] + char_width + horiz_spacing;
+          if c == ' ' {
+            top_left[0] += 5;
+          } else {
+            let char_width = self._draw_char(top_left, &font, c, color, bg_color).unwrap();
+            top_left[0] += char_width + horiz_spacing;
+          }
         }
       }
     }

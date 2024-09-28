@@ -39,9 +39,9 @@ impl WindowLike for Taskbar {
           ShortcutType::StartMenu => {
             let start_index = self.components.iter().position(|c| c.name() == "start-button").unwrap();
             let start_response = self.components[start_index].handle_message(WindowMessage::FocusClick);
-            self.handle_taskbar_message(start_response) //dummy left click event
+            self.handle_taskbar_message(start_response)
           }
-          //
+          _ => WindowMessageResponse::DoNothing,
         }
       },
       _ => WindowMessageResponse::DoNothing,

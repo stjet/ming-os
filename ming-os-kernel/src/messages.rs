@@ -14,6 +14,8 @@ pub enum WindowManagerMessage {
 pub enum WindowManagerRequest {
   OpenWindow(Box<dyn WindowLike + Send>),
   CloseStartMenu,
+  Unlock,
+  Lock,
   //
 }
 
@@ -46,6 +48,7 @@ pub struct KeyPress {
 #[derive(PartialEq)]
 pub enum ShortcutType {
   StartMenu,
+  SwitchWorkspace(u8),
   //
 }
 

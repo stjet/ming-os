@@ -1,5 +1,6 @@
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::string::ToString;
 
 use crate::components::Component;
 use crate::framebuffer::{ get_font_max_height, Dimensions, Point };
@@ -55,7 +56,7 @@ impl<T: Clone> Component<T> for ToggleButton<T> {
       //the background if self.draw_bg
       //DrawInstructions::Rect(),
       //the text (for now, hardcoded top left)
-      DrawInstructions::Text([self.top_left[0] + 4, self.top_left[1] + (self.size[1] - font_height) / 2], "times-new-roman", self.text, theme_info.text, theme_info.background),
+      DrawInstructions::Text([self.top_left[0] + 4, self.top_left[1] + (self.size[1] - font_height) / 2], "times-new-roman", self.text.to_string(), theme_info.text, theme_info.background),
     ]
   }
 

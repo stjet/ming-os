@@ -1,10 +1,9 @@
 use alloc::vec;
 use alloc::vec::Vec;
 use alloc::boxed::Box;
-use alloc::string::String;
 
 use crate::window_manager::{ DrawInstructions, WindowLike, WindowLikeType };
-use crate::messages::{ WindowMessage, WindowMessageResponse };
+use crate::messages::{ WindowMessage, WindowMessageResponse, WindowManagerRequest };
 use crate::framebuffer::Dimensions;
 use crate::themes::ThemeInfo;
 use crate::components::Component;
@@ -42,10 +41,11 @@ impl WindowLike for StartMenu {
         WindowMessageResponse::JustRerender
       },
       WindowMessage::KeyPress(key_press) => {
-        if key_press.key == 'w' || key_press.key == 's' {
+        //up and down
+        if key_press.key == '1' || key_press.key == '2' {
           let old_focus_index = self.get_focus_index().unwrap();
           self.components[old_focus_index].handle_message(WindowMessage::Unfocus);
-          let current_focus_index = if key_press.key == 's' {
+          let current_focus_index = if key_press.key == '2' {
               if old_focus_index + 1 == self.components.len() {
                 0
               } else {
@@ -71,7 +71,18 @@ impl WindowLike for StartMenu {
             WindowMessageResponse::DoNothing
           }
         } else {
-          WindowMessageResponse::DoNothing
+          let current_focus_index = self.get_focus_index().unwrap();
+          if let Some(n_index) = self.components[current_focus_index..].iter().position(|c| c.name().chars().next().unwrap_or('𐘂').to_lowercase().next().unwrap() == key_press.key) {
+            //now old focus, not current focus
+            self.components[current_focus_index].handle_message(WindowMessage::Unfocus);
+            self.old_focus = self.current_focus;
+            ;
+            self.current_focus = self.components[current_focus_index + n_index].name();
+            self.components[current_focus_index + n_index].handle_message(WindowMessage::Focus);
+            WindowMessageResponse::JustRerender
+          } else {
+            WindowMessageResponse::DoNothing
+          }
         }
       },
       _ => WindowMessageResponse::DoNothing,
@@ -127,29 +138,36 @@ impl StartMenu {
     if let Some(message) = message {
       match message {
         StartMenuMessage::CategoryClick(name) => {
-          self.first_draw = true;
-          self.current_focus = "Back";
-          self.components = vec![
-            Box::new(HighlightButton::new(
-              "Back", [42, 0], [self.dimensions[0] - 42 - 1, self.y_each + 1], "Back", StartMenuMessage::Back, StartMenuMessage::ChangeAcknowledge, true
-            ))
-          ];
-          //add window buttons
-          //
+          if name == "Logout" {
+            WindowMessageResponse::Request(WindowManagerRequest::Lock)
+          } else {
+            self.first_draw = true;
+            self.current_focus = "Back";
+            self.components = vec![
+              Box::new(HighlightButton::new(
+                "Back", [42, 0], [self.dimensions[0] - 42 - 1, self.y_each + 1], "Back", StartMenuMessage::Back, StartMenuMessage::ChangeAcknowledge, true
+              ))
+            ];
+            //add window buttons
+            //
+            WindowMessageResponse::JustRerender
+          }
         },
         StartMenuMessage::WindowClick(name) => {
           //open the selected window
           //
+          WindowMessageResponse::JustRerender
         },
         StartMenuMessage::Back => {
           self.first_draw = true;
           self.add_category_components();
+          WindowMessageResponse::JustRerender
         },
         StartMenuMessage::ChangeAcknowledge => {
           //
+          WindowMessageResponse::JustRerender
         },
-      };
-      WindowMessageResponse::JustRerender
+      }
     } else {
       //maybe should be JustRerender?
       WindowMessageResponse::DoNothing

@@ -1,7 +1,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::window_manager::{ DrawInstructions, WindowLike, WindowLikeType, TASKBAR_HEIGHT };
+use crate::window_manager::{ DrawInstructions, WindowLike, WindowLikeType, TASKBAR_HEIGHT, INDICATOR_HEIGHT };
 use crate::messages::{ WindowMessage, WindowMessageResponse };
 use crate::framebuffer::Dimensions;
 use crate::themes::ThemeInfo;
@@ -32,7 +32,7 @@ impl WindowLike for DesktopBackground {
   }
 
   fn ideal_dimensions(&self, dimensions: Dimensions) -> Dimensions {
-    [dimensions[0], dimensions[1] - TASKBAR_HEIGHT]
+    [dimensions[0], dimensions[1] - TASKBAR_HEIGHT - INDICATOR_HEIGHT]
   }
 }
 
