@@ -1,4 +1,5 @@
 use alloc::vec::Vec;
+use alloc::string::String;
 
 use crate::themes::ThemeInfo;
 use crate::messages::WindowMessage;
@@ -16,6 +17,6 @@ pub trait Component<T> {
   //focusing for components is purely to give a visual representation
   fn focusable(&self) -> bool;
   fn clickable(&self) -> bool;
-  fn name(&self) -> &'static str; //should be unique
+  fn name(&self) -> &String; //should be unique
 }
 

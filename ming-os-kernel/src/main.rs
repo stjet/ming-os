@@ -53,8 +53,8 @@ pub fn hlt_loop() -> ! {
 
 #[panic_handler]
 fn panic(panic_info: &PanicInfo) -> ! {
-  draw_panic(&format!("{}", panic_info));
   unsafe { SERIAL1.lock().write_text(&format!("{}", panic_info)); }
+  draw_panic(&format!("{}", panic_info));
   hlt_loop();
 }
 

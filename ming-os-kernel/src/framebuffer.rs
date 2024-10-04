@@ -1,4 +1,5 @@
 use alloc::vec::Vec;
+use core::ptr;
 
 use bootloader_api::info::{ FrameBufferInfo, PixelFormat };
 use lazy_static::lazy_static;
@@ -42,13 +43,12 @@ fn color_with_alpha(color: RGBColor, bg_color: RGBColor, alpha: u8) -> RGBColor 
 }
 
 //currently doesn't check if writing onto next line accidentally
-
-pub struct FrameBufferWriter {
-  info: FrameBufferInfo,
-  raw_buffer: Option<&'static mut [u8]>,
+pub struct FrameBufferWriter<'a> {
+  pub info: FrameBufferInfo,
+  raw_buffer: Option<&'a mut [u8]>,
 }
 
-impl Default for FrameBufferWriter {
+impl Default for FrameBufferWriter<'_> {
   fn default() -> Self {
     Self {
       raw_buffer: None,
@@ -64,10 +64,14 @@ impl Default for FrameBufferWriter {
   }
 }
 
-impl FrameBufferWriter {
-  pub fn new(&mut self, info: FrameBufferInfo, raw_buffer: &'static mut [u8]) {
+impl<'a> FrameBufferWriter<'a> {
+  pub fn new(&mut self, info: FrameBufferInfo, raw_buffer: &'a mut [u8]) {
     self.info = info;
     self.raw_buffer = Some(raw_buffer);
+  }
+
+  pub fn get_buffer(&self) -> &[u8] {
+    self.raw_buffer.as_ref().unwrap()
   }
 
   fn _draw_pixel(&mut self, start_pos: usize, color: RGBColor) {
@@ -76,7 +80,8 @@ impl FrameBufferWriter {
       PixelFormat::Bgr => [color[2], color[1], color[0]],
       _ => panic!("Not rgb or bgr"),
     };
-    self.raw_buffer.as_mut().unwrap()[start_pos..(start_pos + 3)].copy_from_slice(&color[..]);
+    self.raw_buffer.as_mut().unwrap()[start_pos..(start_pos + 3)]
+      .copy_from_slice(&color[..]);
   }
 
   fn _draw_line(&mut self, start_pos: usize, bytes: &[u8]) {
@@ -84,7 +89,21 @@ impl FrameBufferWriter {
       .copy_from_slice(bytes);
   }
 
-  pub fn _draw_char(&mut self, top_left: Point, font: &Font, c: char, color: RGBColor, bg_color: RGBColor) -> Option<usize> {
+  pub fn draw_buffer(&mut self, top_left: Point, height: usize, bytes_per_line: usize, bytes: &[u8]) {
+    //for our framebuffer
+    let mut start_pos = (top_left[1] * self.info.stride + top_left[0]) * self.info.bytes_per_pixel;
+    //of the bufer we want to draw on
+    let mut start = 0;
+    for y in 0..height {
+      self.raw_buffer.as_mut().unwrap()[start_pos..(start_pos + bytes_per_line)]
+        .copy_from_slice(&bytes[start..(start + bytes_per_line)]);
+      let _ = unsafe { ptr::read_volatile(&self.raw_buffer.as_ref().unwrap()[start_pos]) };
+      start += bytes_per_line;
+      start_pos += self.info.stride * self.info.bytes_per_pixel;
+    }
+  }
+
+  pub fn draw_char(&mut self, top_left: Point, font: &Font, c: char, color: RGBColor, bg_color: RGBColor) -> Option<usize> {
     for tri in &font.1 {
       if tri.0 == c {
         let mut start_pos;
@@ -193,7 +212,7 @@ impl FrameBufferWriter {
           if c == ' ' {
             top_left[0] += 5;
           } else {
-            let char_width = self._draw_char(top_left, &font, c, color, bg_color).unwrap();
+            let char_width = self.draw_char(top_left, &font, c, color, bg_color).unwrap_or(0);
             top_left[0] += char_width + horiz_spacing;
           }
         }

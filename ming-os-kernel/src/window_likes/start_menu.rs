@@ -1,6 +1,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 use alloc::boxed::Box;
+use alloc::string::{ String, ToString };
 
 use crate::window_manager::{ DrawInstructions, WindowLike, WindowLikeType };
 use crate::messages::{ WindowMessage, WindowMessageResponse, WindowManagerRequest };
@@ -9,8 +10,10 @@ use crate::themes::ThemeInfo;
 use crate::components::Component;
 use crate::components::highlight_button::HighlightButton;
 
+use crate::window_likes::minesweeper::Minesweeper;
 
-static CATEGORIES: [&'static str; 9]= ["About", "Utils", "Games", "Development", "Files", "System", "Misc", "Help", "Logout"];
+
+static CATEGORIES: [&'static str; 9] = ["About", "Utils", "Games", "Development", "Files", "System", "Misc", "Help", "Logout"];
 
 #[derive(Clone)]
 enum StartMenuMessage {
@@ -21,20 +24,17 @@ enum StartMenuMessage {
 }
 
 pub struct StartMenu {
-  first_draw: bool, //optimise what to redraw
   dimensions: Dimensions,
   components: Vec<Box<dyn Component<StartMenuMessage> + Send>>,
-  current_focus: &'static str,
-  old_focus: &'static str,
+  current_focus: String,
+  old_focus: String,
   y_each: usize,
 }
 
 impl WindowLike for StartMenu {
   fn handle_message(&mut self, message: WindowMessage) -> WindowMessageResponse {
-    self.first_draw = false;
     match message {
       WindowMessage::Init(dimensions) => {
-        self.first_draw = true;
         self.dimensions = dimensions;
         self.y_each = (self.dimensions[1] - 1) / CATEGORIES.len();
         self.add_category_components();
@@ -58,8 +58,8 @@ impl WindowLike for StartMenu {
               old_focus_index - 1
             }
           };
-          self.old_focus = self.current_focus;
-          self.current_focus = self.components[current_focus_index].name();
+          self.old_focus = self.current_focus.to_string();
+          self.current_focus = self.components[current_focus_index].name().to_string();
           self.components[current_focus_index].handle_message(WindowMessage::Focus);
           WindowMessageResponse::JustRerender
         } else if key_press.key == '𐘂' { //the enter key
@@ -75,9 +75,8 @@ impl WindowLike for StartMenu {
           if let Some(n_index) = self.components[current_focus_index..].iter().position(|c| c.name().chars().next().unwrap_or('𐘂').to_lowercase().next().unwrap() == key_press.key) {
             //now old focus, not current focus
             self.components[current_focus_index].handle_message(WindowMessage::Unfocus);
-            self.old_focus = self.current_focus;
-            ;
-            self.current_focus = self.components[current_focus_index + n_index].name();
+            self.old_focus = self.current_focus.clone();
+            self.current_focus = self.components[current_focus_index + n_index].name().to_string();
             self.components[current_focus_index + n_index].handle_message(WindowMessage::Focus);
             WindowMessageResponse::JustRerender
           } else {
@@ -90,23 +89,19 @@ impl WindowLike for StartMenu {
   }
 
   fn draw(&self, theme_info: &ThemeInfo) -> Vec<DrawInstructions> {
-    let mut instructions = Vec::new();
-    if self.first_draw {
-      instructions = vec![
-        //top thin border
-        DrawInstructions::Rect([0, 0], [self.dimensions[0], 1], theme_info.border_left_top),
-        //right thin border
-        DrawInstructions::Rect([self.dimensions[0] - 1, 0], [1, self.dimensions[1]], theme_info.border_right_bottom),
-        //background
-        DrawInstructions::Rect([0, 1], [self.dimensions[0] - 1, self.dimensions[1] - 1], theme_info.background),
-        //mingde logo
-        DrawInstructions::Mingde([2, 2]),
-        //I truly don't know why, it should be - 44 but - 30 seems to work better :shrug:
-        DrawInstructions::Gradient([2, 42], [40, self.dimensions[1] - 30], [255, 201, 14], [225, 219, 77], 15),
-      ];
-    }
-    let redraw_components = self.components.iter().filter(|c| c.name() == self.old_focus || c.name() == self.current_focus || self.first_draw);
-    for component in redraw_components {
+    let mut instructions = vec![
+      //top thin border
+      DrawInstructions::Rect([0, 0], [self.dimensions[0], 1], theme_info.border_left_top),
+      //right thin border
+      DrawInstructions::Rect([self.dimensions[0] - 1, 0], [1, self.dimensions[1]], theme_info.border_right_bottom),
+      //background
+      DrawInstructions::Rect([0, 1], [self.dimensions[0] - 1, self.dimensions[1] - 1], theme_info.background),
+      //mingde logo
+      DrawInstructions::Mingde([2, 2]),
+      //I truly don't know why, it should be - 44 but - 30 seems to work better :shrug:
+      DrawInstructions::Gradient([2, 42], [40, self.dimensions[1] - 30], [255, 201, 14], [225, 219, 77], 15),
+    ];
+    for component in &self.components {
       instructions.extend(component.draw(theme_info));
     }
     instructions
@@ -125,11 +120,10 @@ impl WindowLike for StartMenu {
 impl StartMenu {
   pub fn new() -> Self {
     Self {
-      first_draw: true,
       dimensions: [0, 0],
       components: Vec::new(),
-      current_focus: "", //placeholder, will be set in init
-      old_focus: "",
+      current_focus: String::new(), //placeholder, will be set in init
+      old_focus: String::new(),
       y_each: 0, //will be set in add_category_components
     }
   }
@@ -141,25 +135,37 @@ impl StartMenu {
           if name == "Logout" {
             WindowMessageResponse::Request(WindowManagerRequest::Lock)
           } else {
-            self.first_draw = true;
-            self.current_focus = "Back";
+            self.current_focus = "Back".to_string();
             self.components = vec![
               Box::new(HighlightButton::new(
-                "Back", [42, 0], [self.dimensions[0] - 42 - 1, self.y_each + 1], "Back", StartMenuMessage::Back, StartMenuMessage::ChangeAcknowledge, true
+                "Back".to_string(), [42, 1], [self.dimensions[0] - 42 - 1, self.y_each], "Back", StartMenuMessage::Back, StartMenuMessage::ChangeAcknowledge, true
               ))
             ];
             //add window buttons
+            let mut to_add: Vec<&str> = Vec::new();
+            if name == "Games" {
+              to_add.push("Minesweeper");
+            }
             //
+            for a in 0..to_add.len() {
+              let w_name = to_add[a];
+              self.components.push(Box::new(HighlightButton::new(
+                w_name.to_string(), [42, (a + 1) * self.y_each], [self.dimensions[0] - 42 - 1, self.y_each], w_name, StartMenuMessage::WindowClick(w_name), StartMenuMessage::ChangeAcknowledge, false
+              )));
+            }
             WindowMessageResponse::JustRerender
           }
         },
         StartMenuMessage::WindowClick(name) => {
           //open the selected window
-          //
-          WindowMessageResponse::JustRerender
+          if name == "Minesweeper" {
+            WindowMessageResponse::Request(WindowManagerRequest::OpenWindow(Box::new(Minesweeper::new())))
+          } else {
+            //
+            WindowMessageResponse::JustRerender
+          }
         },
         StartMenuMessage::Back => {
-          self.first_draw = true;
           self.add_category_components();
           WindowMessageResponse::JustRerender
         },
@@ -175,18 +181,18 @@ impl StartMenu {
   }
 
   pub fn add_category_components(&mut self) {
-    self.current_focus = "About";
+    self.current_focus = "About".to_string();
     self.components = Vec::new();
     for c in 0..CATEGORIES.len() {
       let name = CATEGORIES[c];
       self.components.push(Box::new(HighlightButton::new(
-        name, [42, self.y_each * c + 1], [self.dimensions[0] - 42 - 1, self.y_each], name, StartMenuMessage::CategoryClick(name), StartMenuMessage::ChangeAcknowledge, c == 0
+        name.to_string(), [42, self.y_each * c + 1], [self.dimensions[0] - 42 - 1, self.y_each], name, StartMenuMessage::CategoryClick(name), StartMenuMessage::ChangeAcknowledge, c == 0
       )));
     }
   }
 
   pub fn get_focus_index(&self) -> Option<usize> {
-    self.components.iter().filter(|c| c.focusable()).position(|c| c.name() == self.current_focus)
+    self.components.iter().filter(|c| c.focusable()).position(|c| c.name() == &self.current_focus)
   }
 }
 

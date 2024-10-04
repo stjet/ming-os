@@ -4,6 +4,7 @@ use alloc::string::String;
 use alloc::collections::BTreeMap;
 use alloc::fmt;
 use alloc::boxed::Box;
+use alloc::string::ToString;
 use alloc::format;
 
 use spin;
@@ -23,10 +24,11 @@ use crate::messages::*;
 
 pub const TASKBAR_HEIGHT: usize = 38;
 pub const INDICATOR_HEIGHT: usize = 20;
+pub const WINDOW_TOP_HEIGHT: usize = 26;
 static mut DEBUG_COUNTER: usize = 0;
 
 lazy_static! {
-  static ref WRITER: spin::Mutex<FrameBufferWriter> = spin::Mutex::new(Default::default());
+  static ref WRITER: spin::Mutex<FrameBufferWriter<'static>> = spin::Mutex::new(Default::default());
   static ref WM: spin::Mutex<WindowManager> = spin::Mutex::new(Default::default());
 }
 
@@ -75,6 +77,7 @@ pub fn debug_write() {
   }
 }
 
+#[derive(Debug)]
 pub enum DrawInstructions {
   Rect(Point, Dimensions, RGBColor),
   Text(Point, &'static str, String, RGBColor, RGBColor), //font and text
@@ -96,6 +99,9 @@ pub trait WindowLike {
   fn handle_message(&mut self, message: WindowMessage) -> WindowMessageResponse;
 
   //properties
+  fn title(&self) -> &'static str {
+    ""
+  }
   fn subtype(&self) -> WindowLikeType;
   fn draw(&self, theme_info: &ThemeInfo) -> Vec<DrawInstructions>;
 
@@ -163,13 +169,23 @@ impl WindowManager {
     self.window_infos.iter().position(|w| w.id == self.focused_id)
   }
 
-  pub fn lock(&mut self) {
+  //should return an iterator but fuck it!
+  fn get_windows_in_workspace(&self) -> Vec<&WindowLikeInfo> {
+    self.window_infos.iter().filter(|w| {
+      match w.workspace {
+        Workspace::Workspace(workspace) => workspace == self.current_workspace,
+        _ => false, //filter out taskbar, indicator, background, start menu, etc
+      }
+    }).collect()
+  }
+
+  fn lock(&mut self) {
     self.locked = true;
     self.window_infos = Vec::new();
     self.add_window_like(Box::new(LockScreen::new()), [0, 0], None);
   }
 
-  pub fn unlock(&mut self) {
+  fn unlock(&mut self) {
     self.locked = false;
     self.window_infos = Vec::new();
     self.add_window_like(Box::new(DesktopBackground::new()), [0, INDICATOR_HEIGHT], None);
@@ -178,7 +194,7 @@ impl WindowManager {
   }
 
   //if off_only is true, also handle request
-  pub fn toggle_start_menu(&mut self, off_only: bool) -> WindowMessageResponse {
+  fn toggle_start_menu(&mut self, off_only: bool) -> WindowMessageResponse {
     let start_menu_exists = self.window_infos.iter().find(|w| w.window_like.subtype() == WindowLikeType::StartMenu).is_some();
     if (start_menu_exists && off_only) || !off_only {
       let taskbar_index = self.window_infos.iter().position(|w| w.window_like.subtype() == WindowLikeType::Taskbar).unwrap();
@@ -190,6 +206,15 @@ impl WindowManager {
     } else {
       WindowMessageResponse::DoNothing
     }
+  }
+
+  fn taskbar_update_windows(&mut self) {
+    let taskbar_index = self.window_infos.iter().position(|w| w.window_like.subtype() == WindowLikeType::Taskbar).unwrap();
+    let message = WindowMessage::Info(InfoType::WindowsInWorkspace(
+      self.get_windows_in_workspace().iter().map(|w| (w.id, w.window_like.title())).collect(),
+      self.focused_id
+    ));
+    self.window_infos[taskbar_index].window_like.handle_message(message);
   }
 
   pub fn handle_message(&mut self, message: WindowManagerMessage) {
@@ -214,6 +239,8 @@ impl WindowManager {
                 ('7', ShortcutType::SwitchWorkspace(6)),
                 ('8', ShortcutType::SwitchWorkspace(7)),
                 ('9', ShortcutType::SwitchWorkspace(8)),
+                (']', ShortcutType::FocusNextWindow),
+                ('q', ShortcutType::QuitWindow),
                 //
               ]);
               if let Some(shortcut) = shortcuts.get(&c) {
@@ -231,11 +258,40 @@ impl WindowManager {
                       let indicator_index = self.window_infos.iter().position(|w| w.window_like.subtype() == WindowLikeType::WorkspaceIndicator).unwrap();
                       self.focused_id = self.window_infos[indicator_index].id;
                       self.window_infos[indicator_index].window_like.handle_message(WindowMessage::Shortcut(ShortcutType::SwitchWorkspace(self.current_workspace)));
+                      self.taskbar_update_windows();
                       press_response = WindowMessageResponse::JustRerender;
                     }
                   },
-                  //
-                  _ => {},
+                  &ShortcutType::FocusNextWindow => {
+                    let current_index = self.get_focused_index().unwrap_or(0);
+                    let mut new_focus_index = current_index;
+                    loop {
+                      new_focus_index += 1;
+                      if new_focus_index == self.window_infos.len() {
+                        new_focus_index = 0;
+                      }
+                      if self.window_infos[new_focus_index].window_like.subtype() == WindowLikeType::Window {
+                        //switch focus to this
+                        self.focused_id = self.window_infos[new_focus_index].id;
+                        self.taskbar_update_windows();
+                        //todo: elevate it to the top
+                        //
+                        press_response = WindowMessageResponse::JustRerender;
+                        break;
+                      } else if new_focus_index == current_index {
+                        break; //did a full loop, found no windows
+                      }
+                    }
+                  },
+                  &ShortcutType::QuitWindow => {
+                    if let Some(focused_index) = self.get_focused_index() {
+                      if self.window_infos[focused_index].window_like.subtype() == WindowLikeType::Window {
+                        self.window_infos.remove(focused_index);
+                        self.taskbar_update_windows();
+                        press_response = WindowMessageResponse::JustRerender;
+                      }
+                    }
+                  },
                 };
               }
             }
@@ -290,12 +346,15 @@ impl WindowManager {
           return;
         }
         //close start menu if open
+        self.toggle_start_menu(true);
         let ideal_dimensions = w.ideal_dimensions(self.dimensions);
         let top_left = match w.subtype() {
           WindowLikeType::StartMenu => [0, self.dimensions[1] - TASKBAR_HEIGHT - ideal_dimensions[1]],
+          WindowLikeType::Window => [42, 42],
           _ => [0, 0],
         };
         self.add_window_like(w, top_left, Some(ideal_dimensions));
+        self.taskbar_update_windows();
       },
       WindowManagerRequest::CloseStartMenu => {
         if subtype != WindowLikeType::Taskbar && subtype != WindowLikeType::StartMenu {
@@ -321,6 +380,7 @@ impl WindowManager {
     };
   }
 
+  //another issue with a huge vector of draw instructions; it takes up heap memory
   pub fn render(&mut self, maybe_redraw_ids: Option<Vec<usize>>) {
     let redraw_windows = self.window_infos.iter().filter(|w| {
       if let Some(redraw_ids) = &maybe_redraw_ids {
@@ -334,41 +394,72 @@ impl WindowManager {
         _ => true,
       }
     });
+    let theme_info = get_theme_info(&self.theme).unwrap();
     for window_info in redraw_windows {
-      //draw window decorations and what not
-      //
-      let theme_info = get_theme_info(&self.theme).unwrap();
-      for instruction in window_info.window_like.draw(&theme_info) {
+      //unsafe { SERIAL1.lock().write_text(&format!("{:?}\n", &window_info.window_like.subtype())); }
+      let mut instructions = Vec::new();
+      if window_info.window_like.subtype() == WindowLikeType::Window {
+        //draw window background
+        instructions.push(DrawInstructions::Rect([0, 0], window_info.dimensions, theme_info.background));
+      }
+      instructions.extend(window_info.window_like.draw(&theme_info));
+      if window_info.window_like.subtype() == WindowLikeType::Window {
+        //draw window top decorations and what not
+        instructions.extend(vec![
+          //left top border
+          DrawInstructions::Rect([0, 0], [window_info.dimensions[0], 1], theme_info.border_left_top),
+          DrawInstructions::Rect([0, 0], [1, window_info.dimensions[1]], theme_info.border_left_top),
+          //top
+          DrawInstructions::Rect([1, 1], [window_info.dimensions[0] - 2, WINDOW_TOP_HEIGHT - 3], theme_info.top),
+          DrawInstructions::Text([4, 4], "times-new-roman", window_info.window_like.title().to_string(), theme_info.text_top, theme_info.top),
+          //top bottom border
+          DrawInstructions::Rect([1, WINDOW_TOP_HEIGHT - 2], [window_info.dimensions[0] - 2, 2], theme_info.border_left_top),
+          //right bottom border
+          DrawInstructions::Rect([window_info.dimensions[0] - 1, 1], [1, window_info.dimensions[1] - 1], theme_info.border_right_bottom),
+          DrawInstructions::Rect([1, window_info.dimensions[1] - 1], [window_info.dimensions[0] - 1, 1], theme_info.border_right_bottom),
+        ]);
+      }
+      let mut window_writer: FrameBufferWriter = Default::default();
+      let mut framebuffer_info = WRITER.lock().info;
+      let window_width = window_info.dimensions[0];
+      let window_height = window_info.dimensions[1];
+      framebuffer_info.width = window_width;
+      framebuffer_info.height = window_height;
+      framebuffer_info.stride = window_width;
+      let mut temp_vec = vec![0 as u8; window_width * window_height * framebuffer_info.bytes_per_pixel];
+      //make a writer just for the window
+      window_writer.new(framebuffer_info, &mut temp_vec[..]);
+      for instruction in instructions {
+        //unsafe { SERIAL1.lock().write_text(&format!("{:?}\n", instruction)); }
         match instruction {
           DrawInstructions::Rect(top_left, dimensions, color) => {
-            let true_top_left = [top_left[0] + window_info.top_left[0], top_left[1] + window_info.top_left[1]];
             //try and prevent overflows out of the window
             let true_dimensions = [
               min(dimensions[0], window_info.dimensions[0] - top_left[0]),
               min(dimensions[1], window_info.dimensions[1] - top_left[1]),
             ];
-            WRITER.lock().draw_rect(true_top_left, true_dimensions, color);
+            window_writer.draw_rect(top_left, true_dimensions, color);
           },
           DrawInstructions::Text(top_left, font_name, text, color, bg_color) => {
-            let true_top_left = [top_left[0] + window_info.top_left[0], top_left[1] + window_info.top_left[1]];
             //todo: overflows and shit
             //
-            WRITER.lock().draw_text(true_top_left, font_name, &text, color, bg_color, 1);
+            window_writer.draw_text(top_left, font_name, &text, color, bg_color, 1);
           },
           DrawInstructions::Mingde(top_left) => {
-            let true_top_left = [top_left[0] + window_info.top_left[0], top_left[1] + window_info.top_left[1]];
             //todo: overflows and shit
             //
-            WRITER.lock()._draw_mingde(true_top_left);
+            window_writer._draw_mingde(top_left);
           },
           DrawInstructions::Gradient(top_left, dimensions, start_color, end_color, steps) => {
-            let true_top_left = [top_left[0] + window_info.top_left[0], top_left[1] + window_info.top_left[1]];
             //todo: overflows and shit
             //
-            WRITER.lock().draw_gradient(true_top_left, dimensions, start_color, end_color, steps);
+            window_writer.draw_gradient(top_left, dimensions, start_color, end_color, steps);
           },
         }
       }
+      WRITER.lock().draw_buffer(window_info.top_left, window_info.dimensions[1], window_info.dimensions[0] * framebuffer_info.bytes_per_pixel, &window_writer.get_buffer());
+      //core::mem::drop(window_writer);
+      //core::mem::drop(temp_vec);
     }
   }
 }

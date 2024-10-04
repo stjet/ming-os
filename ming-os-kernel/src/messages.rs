@@ -45,10 +45,22 @@ pub struct KeyPress {
   //
 }
 
+//todo, rename to CommandType
 #[derive(PartialEq)]
 pub enum ShortcutType {
   StartMenu,
   SwitchWorkspace(u8),
+  //MoveWindowToWorkspace(u8),
+  FocusNextWindow,
+  QuitWindow,
+  //
+}
+
+pub type WindowsVec = Vec<(usize, &'static str)>;
+
+pub enum InfoType {
+  //let taskbar know what the current windows in the workspace are
+  WindowsInWorkspace(WindowsVec, usize), //Vec<title, name)>, focused id
   //
 }
 
@@ -56,6 +68,7 @@ pub enum WindowMessage {
   Init(Dimensions),
   KeyPress(KeyPress),
   Shortcut(ShortcutType),
+  Info(InfoType),
   Focus,
   Unfocus,
   FocusClick,

@@ -1,6 +1,6 @@
 use alloc::vec;
 use alloc::vec::Vec;
-use alloc::string::ToString;
+use alloc::string::{ String, ToString };
 
 use crate::components::Component;
 use crate::framebuffer::{ get_font_max_height, Dimensions, Point };
@@ -12,11 +12,10 @@ use crate::window_manager::DrawInstructions;
 pub enum ToggleButtonAlignment {
   Centre,
   Left,
-  Right,
 }
 
 pub struct ToggleButton<T> {
-  name_: &'static str,
+  name_: String,
   top_left: Point,
   size: Dimensions,
   text: &'static str,
@@ -69,13 +68,13 @@ impl<T: Clone> Component<T> for ToggleButton<T> {
     true
   }
   
-  fn name(&self) -> &'static str {
-    self.name_
+  fn name(&self) -> &String {
+    &self.name_
   }
 }
 
 impl<T> ToggleButton<T> {
-  pub fn new(name_: &'static str, top_left: Point, size: Dimensions, text: &'static str, click_return: T, unclick_return: T, draw_bg: bool, alignment: Option<ToggleButtonAlignment>) -> Self {
+  pub fn new(name_: String, top_left: Point, size: Dimensions, text: &'static str, click_return: T, unclick_return: T, draw_bg: bool, alignment: Option<ToggleButtonAlignment>) -> Self {
     Self {
       name_,
       top_left,
