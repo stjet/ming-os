@@ -61,11 +61,13 @@ impl LApic {
     }
   }
 
+  /*
   pub fn disable(&mut self) {
     unsafe {
       self.lapic.as_mut().unwrap().disable();
     }
   }
+  */
 
   pub fn end_interrupt(&mut self) {
     unsafe {

@@ -46,12 +46,12 @@ fn color_with_alpha(color: RGBColor, bg_color: RGBColor, alpha: u8) -> RGBColor 
 pub struct FrameBufferWriter<'a> {
   pub info: FrameBufferInfo,
   raw_buffer: Option<&'a mut [u8]>,
+  saved_buffer: Option<Vec<u8>>,
 }
 
 impl Default for FrameBufferWriter<'_> {
   fn default() -> Self {
     Self {
-      raw_buffer: None,
       info: FrameBufferInfo {
         byte_len: 0,
         width: 0,
@@ -59,7 +59,9 @@ impl Default for FrameBufferWriter<'_> {
         pixel_format: PixelFormat::Rgb,
         bytes_per_pixel: 0,
         stride: 0,
-      }
+      },
+      raw_buffer: None,
+      saved_buffer: None,
     }
   }
 }
@@ -72,6 +74,15 @@ impl<'a> FrameBufferWriter<'a> {
 
   pub fn get_buffer(&self) -> &[u8] {
     self.raw_buffer.as_ref().unwrap()
+  }
+
+  pub fn save_buffer(&mut self) {
+    self.saved_buffer = Some(self.raw_buffer.as_ref().unwrap().to_vec());
+  }
+
+  pub fn write_saved_buffer_to_raw(&mut self) {
+    self.raw_buffer.as_mut().unwrap()[..]
+      .copy_from_slice(&self.saved_buffer.as_ref().unwrap()[..]);
   }
 
   fn _draw_pixel(&mut self, start_pos: usize, color: RGBColor) {
@@ -94,7 +105,7 @@ impl<'a> FrameBufferWriter<'a> {
     let mut start_pos = (top_left[1] * self.info.stride + top_left[0]) * self.info.bytes_per_pixel;
     //of the bufer we want to draw on
     let mut start = 0;
-    for y in 0..height {
+    for _y in 0..height {
       self.raw_buffer.as_mut().unwrap()[start_pos..(start_pos + bytes_per_line)]
         .copy_from_slice(&bytes[start..(start + bytes_per_line)]);
       let _ = unsafe { ptr::read_volatile(&self.raw_buffer.as_ref().unwrap()[start_pos]) };

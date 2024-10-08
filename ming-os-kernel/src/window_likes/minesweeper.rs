@@ -3,7 +3,6 @@ use alloc::vec;
 use alloc::string::{ String, ToString };
 use alloc::collections::VecDeque;
 use core::convert::TryFrom;
-use alloc::format;
 
 use crate::window_manager::{ DrawInstructions, WindowLike, WindowLikeType, WINDOW_TOP_HEIGHT };
 use crate::messages::{ WindowMessage, WindowMessageResponse };
@@ -81,8 +80,7 @@ impl WindowLike for Minesweeper {
               self.first_char = key_press.key;
             }
             WindowMessageResponse::DoNothing
-          } else {
-            //todo: this can panic? validation is not proper
+          } else if HEX_CHARS.iter().find(|c| c == &&key_press.key).is_some() {
             let u = hex_to_u8(self.first_char, key_press.key) as usize;
             let y = u / 16;
             let x = u % 16;
@@ -132,6 +130,8 @@ impl WindowLike for Minesweeper {
             } else {
               WindowMessageResponse::DoNothing
             }
+          } else {
+            WindowMessageResponse::DoNothing
           }
         } else {
           self.tiles = Default::default();
@@ -184,7 +184,7 @@ impl WindowLike for Minesweeper {
           let tile = &self.tiles[y][x];
           if tile.revealed {
             if tile.mine {
-              instructions.push(DrawInstructions::Text([x * tile_size + tile_size / 2, WINDOW_TOP_HEIGHT + y * tile_size + tile_size / 2 + 2], "times-new-roman", "x".to_string(), [255, 0, 0], theme_info.background));
+              instructions.push(DrawInstructions::Text([x * tile_size + tile_size / 2 + 2, WINDOW_TOP_HEIGHT + y * tile_size + tile_size / 2], "times-new-roman", "x".to_string(), [255, 0, 0], theme_info.background));
             } else {
               let color = match tile.touching {
                 1 => [0, 0, 255],

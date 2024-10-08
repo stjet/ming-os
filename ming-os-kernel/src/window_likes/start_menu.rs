@@ -42,10 +42,10 @@ impl WindowLike for StartMenu {
       },
       WindowMessage::KeyPress(key_press) => {
         //up and down
-        if key_press.key == '1' || key_press.key == '2' {
+        if key_press.key == 'k' || key_press.key == 'j' {
           let old_focus_index = self.get_focus_index().unwrap();
           self.components[old_focus_index].handle_message(WindowMessage::Unfocus);
-          let current_focus_index = if key_press.key == '2' {
+          let current_focus_index = if key_press.key == 'j' {
               if old_focus_index + 1 == self.components.len() {
                 0
               } else {
@@ -128,7 +128,7 @@ impl StartMenu {
     }
   }
 
-  pub fn handle_start_menu_message(&mut self, message: Option<StartMenuMessage>) -> WindowMessageResponse {
+  fn handle_start_menu_message(&mut self, message: Option<StartMenuMessage>) -> WindowMessageResponse {
     if let Some(message) = message {
       match message {
         StartMenuMessage::CategoryClick(name) => {

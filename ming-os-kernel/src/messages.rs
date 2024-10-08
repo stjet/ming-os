@@ -11,19 +11,23 @@ pub enum WindowManagerMessage {
   //
 }
 
-pub enum WindowManagerRequest {
-  OpenWindow(Box<dyn WindowLike + Send>),
-  CloseStartMenu,
-  Unlock,
-  Lock,
-  //
-}
+type WindowBox = Box<dyn WindowLike + Send>;
 
-impl PartialEq for WindowManagerRequest {
+impl PartialEq for WindowBox {
   fn eq(&self, _other: &Self) -> bool {
     //lol
     true
   }
+}
+
+
+#[derive(PartialEq)]
+pub enum WindowManagerRequest {
+  OpenWindow(WindowBox),
+  CloseStartMenu,
+  Unlock,
+  Lock,
+  //
 }
 
 impl fmt::Debug for WindowManagerRequest{
@@ -45,14 +49,24 @@ pub struct KeyPress {
   //
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum Direction {
+  Left,
+  Down,
+  Up,
+  Right,
+}
+
 //todo, rename to CommandType
 #[derive(PartialEq)]
 pub enum ShortcutType {
   StartMenu,
   SwitchWorkspace(u8),
-  //MoveWindowToWorkspace(u8),
+  MoveWindowToWorkspace(u8),
   FocusNextWindow,
   QuitWindow,
+  MoveWindow(Direction),
+  MoveWindowToEdge(Direction),
   //
 }
 

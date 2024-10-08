@@ -108,7 +108,7 @@ impl Taskbar {
     }
   }
 
-  pub fn handle_taskbar_message(&mut self, message: Option<TaskbarMessage>) -> WindowMessageResponse {
+  fn handle_taskbar_message(&mut self, message: Option<TaskbarMessage>) -> WindowMessageResponse {
     if let Some(message) = message {
       match message {
         TaskbarMessage::ShowStartMenu => {

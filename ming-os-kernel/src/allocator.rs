@@ -12,7 +12,7 @@ static ALLOCATOR: SpinLockedAllocator = SpinLockedAllocator::empty();
 
 pub const HEAP_START: usize = 0x_4444_4444_0000;
 //pub const HEAP_SIZE: usize = 900 * 1024; //900 kb
-pub const HEAP_SIZE: usize = 10 * 1024 * 1024; //10 mb. jeez
+pub const HEAP_SIZE: usize = 15 * 1024 * 1024; //15 mb. jeez
 
 pub fn init_heap(
   mapper: &mut impl Mapper<Size4KiB>,
