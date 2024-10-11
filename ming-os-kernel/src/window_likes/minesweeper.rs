@@ -124,7 +124,18 @@ impl WindowLike for Minesweeper {
               self.first_char = '\0';
               if self.state != MinesweeperState::Lost {
                 //check for win
-                //
+                let mut won = true;
+                for y in 0..16 {
+                  for x in 0..16 {
+                    let tile = &self.tiles[y][x];
+                    if !tile.revealed && !tile.mine {
+                      won = false;
+                    }
+                  }
+                }
+                if won {
+                  self.state = MinesweeperState::Won;
+                }
               }
               WindowMessageResponse::JustRerender
             } else {
@@ -146,8 +157,8 @@ impl WindowLike for Minesweeper {
   fn draw(&self, theme_info: &ThemeInfo) -> Vec<DrawInstructions> {
     if self.state == MinesweeperState::Seed {
       vec![
-        DrawInstructions::Text([4, WINDOW_TOP_HEIGHT + 4], "times-new-roman", "Type in random characters to initalise the seed".to_string(), theme_info.text, theme_info.background),
-        DrawInstructions::Text([4, WINDOW_TOP_HEIGHT + 4 + 16], "times-new-roman", self.random_chars.clone(), theme_info.text, theme_info.background),
+        DrawInstructions::Text([4, WINDOW_TOP_HEIGHT + 4], "times-new-roman", "Type in random characters to initalise the seed".to_string(), theme_info.text, theme_info.background, None),
+        DrawInstructions::Text([4, WINDOW_TOP_HEIGHT + 4 + 16], "times-new-roman", self.random_chars.clone(), theme_info.text, theme_info.background, None),
       ]
     } else {
       let mut instructions = vec![
@@ -184,7 +195,7 @@ impl WindowLike for Minesweeper {
           let tile = &self.tiles[y][x];
           if tile.revealed {
             if tile.mine {
-              instructions.push(DrawInstructions::Text([x * tile_size + tile_size / 2 + 2, WINDOW_TOP_HEIGHT + y * tile_size + tile_size / 2], "times-new-roman", "x".to_string(), [255, 0, 0], theme_info.background));
+              instructions.push(DrawInstructions::Text([x * tile_size + tile_size / 2 + 2, WINDOW_TOP_HEIGHT + y * tile_size + tile_size / 2], "times-new-roman", "x".to_string(), [255, 0, 0], theme_info.background, None));
             } else {
               let color = match tile.touching {
                 1 => [0, 0, 255],
@@ -197,7 +208,7 @@ impl WindowLike for Minesweeper {
                 //8
                 _ => [128, 128, 128],
               };
-              instructions.push(DrawInstructions::Text([x * tile_size + tile_size / 2 + 5, WINDOW_TOP_HEIGHT + y * tile_size + tile_size / 2 + 2], "times-new-roman", tile.touching.to_string(), color, theme_info.background));
+              instructions.push(DrawInstructions::Text([x * tile_size + tile_size / 2 + 5, WINDOW_TOP_HEIGHT + y * tile_size + tile_size / 2 + 2], "times-new-roman", tile.touching.to_string(), color, theme_info.background, None));
             }
           } else {
             let top_left = [x * tile_size + 6, WINDOW_TOP_HEIGHT + y * tile_size + 5];
@@ -215,15 +226,15 @@ impl WindowLike for Minesweeper {
               //right bottom
               DrawInstructions::Rect([top_left[0] + tile_size - 4, top_left[1] + 3], [3, tile_size - 4], [128, 128, 128]),
               //
-              DrawInstructions::Text([x * tile_size + tile_size / 2 - 2, WINDOW_TOP_HEIGHT + y * tile_size + tile_size / 2], "times-new-roman", u8_to_hex((y * 16 + x) as u8), theme_info.text, theme_info.background),
+              DrawInstructions::Text([x * tile_size + tile_size / 2 - 2, WINDOW_TOP_HEIGHT + y * tile_size + tile_size / 2], "times-new-roman", u8_to_hex((y * 16 + x) as u8), theme_info.text, theme_info.background, None),
             ]);
           }
         }
       }
       if self.state == MinesweeperState::Lost {
-        instructions.extend(vec![DrawInstructions::Text([4, WINDOW_TOP_HEIGHT + 4], "times-new-roman", "You LOST!!! Press a key to play again.".to_string(), theme_info.text, theme_info.background)]);
+        instructions.extend(vec![DrawInstructions::Text([4, WINDOW_TOP_HEIGHT + 4], "times-new-roman", "You LOST!!! Press a key to play again.".to_string(), theme_info.text, theme_info.background, None)]);
       } else if self.state == MinesweeperState::Won {
-        instructions.extend(vec![DrawInstructions::Text([4, WINDOW_TOP_HEIGHT + 4], "times-new-roman", "You WON!!! Press a key to play again.".to_string(), theme_info.text, theme_info.background)]);
+        instructions.extend(vec![DrawInstructions::Text([4, WINDOW_TOP_HEIGHT + 4], "times-new-roman", "You WON!!! Press a key to play again.".to_string(), theme_info.text, theme_info.background, None)]);
       }
       instructions
     }

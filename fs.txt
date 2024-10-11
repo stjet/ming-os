@@ -1,0 +1,7 @@
+@#@#@#[test.txt]@#@#@#
+Testing 123 mic test 123
+@#@#@#[a/b/yup.txt]@#@#@#
+Yup yup
+Yup
+
+Nope

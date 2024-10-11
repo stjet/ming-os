@@ -8,6 +8,7 @@ extern crate alloc;
 
 use core::panic::PanicInfo;
 use core::mem::replace;
+use core::slice::from_raw_parts;
 use alloc::format;
 
 use bootloader_api::{ entry_point, BootInfo, BootloaderConfig };
@@ -44,6 +45,9 @@ mod serial;
 use serial::SERIAL1;
 
 mod messages;
+
+mod fs;
+use fs::FileSystem;
 
 pub fn hlt_loop() -> ! {
   loop {
@@ -82,8 +86,12 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
   let framebuffer = replace(&mut boot_info.framebuffer, Optional::None);
   let framebuffer: FrameBuffer = framebuffer.into_option().unwrap();
 
+  //set up "file system"
+  let mut fs = FileSystem::new();
+  unsafe { fs.init(from_raw_parts(boot_info.ramdisk_addr.into_option().unwrap() as *const u8, boot_info.ramdisk_len as usize)) };
+
   //set up wm and whatnot
-  init(framebuffer);
+  init(framebuffer, fs);
   debug_write();
   
   //lapic or something

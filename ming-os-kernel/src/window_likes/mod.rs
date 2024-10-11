@@ -5,4 +5,5 @@ pub mod lock_screen;
 pub mod workspace_indicator;
 
 pub mod minesweeper;
+pub mod terminal;
 

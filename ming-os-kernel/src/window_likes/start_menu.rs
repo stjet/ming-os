@@ -11,9 +11,10 @@ use crate::components::Component;
 use crate::components::highlight_button::HighlightButton;
 
 use crate::window_likes::minesweeper::Minesweeper;
+use crate::window_likes::terminal::Terminal;
 
 
-static CATEGORIES: [&'static str; 9] = ["About", "Utils", "Games", "Development", "Files", "System", "Misc", "Help", "Logout"];
+static CATEGORIES: [&'static str; 9] = ["About", "Utils", "Games", "Editing", "Files", "System", "Misc", "Help", "Logout"];
 
 #[derive(Clone)]
 enum StartMenuMessage {
@@ -145,6 +146,8 @@ impl StartMenu {
             let mut to_add: Vec<&str> = Vec::new();
             if name == "Games" {
               to_add.push("Minesweeper");
+            } else if name == "Files" {
+              to_add.push("Terminal");
             }
             //
             for a in 0..to_add.len() {
@@ -160,6 +163,8 @@ impl StartMenu {
           //open the selected window
           if name == "Minesweeper" {
             WindowMessageResponse::Request(WindowManagerRequest::OpenWindow(Box::new(Minesweeper::new())))
+          } else if name == "Terminal" {
+            WindowMessageResponse::Request(WindowManagerRequest::OpenWindow(Box::new(Terminal::new())))
           } else {
             //
             WindowMessageResponse::JustRerender

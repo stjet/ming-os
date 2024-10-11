@@ -22,6 +22,7 @@ use crate::window_likes::workspace_indicator::WorkspaceIndicator;
 use crate::themes::{ ThemeInfo, Themes, get_theme_info };
 use crate::keyboard::{ KeyChar, uppercase_or_special };
 use crate::messages::*;
+use crate::fs::FileSystem;
 
 pub const TASKBAR_HEIGHT: usize = 38;
 pub const INDICATOR_HEIGHT: usize = 20;
@@ -35,11 +36,11 @@ lazy_static! {
   static ref WM: spin::Mutex<WindowManager> = spin::Mutex::new(Default::default());
 }
 
-pub fn init(framebuffer: FrameBuffer) {
+pub fn init(framebuffer: FrameBuffer, file_system: FileSystem) {
   let framebuffer_info = framebuffer.info();
   WRITER.lock().new(framebuffer_info, framebuffer.into_buffer());
   
-  WM.lock().init([framebuffer_info.width, framebuffer_info.height]);
+  WM.lock().init([framebuffer_info.width, framebuffer_info.height], file_system);
 
   without_interrupts(|| {
     WM.lock().render(None, false);
@@ -65,7 +66,7 @@ pub fn keyboard_emit(key_char: KeyChar) {
 
 pub fn draw_panic(p: &str) {
   WRITER.lock().draw_rect([0, 0], [200, 10], [0, 255, 0]);
-  WRITER.lock().draw_text([0, 0], "times-new-roman", p, [0, 0, 0], [0, 255, 0], 1);
+  WRITER.lock().draw_text([0, 0], "times-new-roman", p, [0, 0, 0], [0, 255, 0], 1, None);
 }
 
 pub fn debug_write() {
@@ -83,7 +84,7 @@ pub fn debug_write() {
 #[derive(Debug)]
 pub enum DrawInstructions {
   Rect(Point, Dimensions, RGBColor),
-  Text(Point, &'static str, String, RGBColor, RGBColor), //font and text
+  Text(Point, &'static str, String, RGBColor, RGBColor, Option<u8>), //font and text
   Gradient(Point, Dimensions, RGBColor, RGBColor, usize),
   Mingde(Point),
 }
@@ -114,6 +115,7 @@ pub trait WindowLike {
   fn ideal_dimensions(&self, dimensions: Dimensions) -> Dimensions; //needs &self or its not object safe or some bullcrap
 }
 
+#[derive(PartialEq)]
 pub enum Workspace {
   All,
   Workspace(u8), //goes from 0-8
@@ -143,13 +145,15 @@ pub struct WindowManager {
   held_special_keys: Vec<&'static str>,
   locked: bool,
   current_workspace: u8,
+  file_system: FileSystem,
 }
 
 //1 is up, 2 is down
 
 impl WindowManager {
-  pub fn init(&mut self, dimensions: Dimensions) {
+  pub fn init(&mut self, dimensions: Dimensions, file_system: FileSystem) {
     self.dimensions = dimensions;
+    self.file_system = file_system;
     self.lock();
   }
 
@@ -378,7 +382,7 @@ impl WindowManager {
                       if new_focus_index == self.window_infos.len() {
                         new_focus_index = 0;
                       }
-                      if self.window_infos[new_focus_index].window_like.subtype() == WindowLikeType::Window {
+                      if self.window_infos[new_focus_index].window_like.subtype() == WindowLikeType::Window && self.window_infos[new_focus_index].workspace == Workspace::Workspace(self.current_workspace) {
                         //switch focus to this
                         self.focused_id = self.window_infos[new_focus_index].id;
                         //elevate it to the top
@@ -529,7 +533,7 @@ impl WindowManager {
           DrawInstructions::Rect([0, 0], [1, window_info.dimensions[1]], theme_info.border_left_top),
           //top
           DrawInstructions::Rect([1, 1], [window_info.dimensions[0] - 2, WINDOW_TOP_HEIGHT - 3], theme_info.top),
-          DrawInstructions::Text([4, 4], "times-new-roman", window_info.window_like.title().to_string(), theme_info.text_top, theme_info.top),
+          DrawInstructions::Text([4, 4], "times-new-roman", window_info.window_like.title().to_string(), theme_info.text_top, theme_info.top, None),
           //top bottom border
           DrawInstructions::Rect([1, WINDOW_TOP_HEIGHT - 2], [window_info.dimensions[0] - 2, 2], theme_info.border_left_top),
           //right bottom border
@@ -558,19 +562,13 @@ impl WindowManager {
             ];
             window_writer.draw_rect(top_left, true_dimensions, color);
           },
-          DrawInstructions::Text(top_left, font_name, text, color, bg_color) => {
-            //todo: overflows and shit
-            //
-            window_writer.draw_text(top_left, font_name, &text, color, bg_color, 1);
+          DrawInstructions::Text(top_left, font_name, text, color, bg_color, mono_width) => {
+            window_writer.draw_text(top_left, font_name, &text, color, bg_color, 1, mono_width);
           },
           DrawInstructions::Mingde(top_left) => {
-            //todo: overflows and shit
-            //
             window_writer._draw_mingde(top_left);
           },
           DrawInstructions::Gradient(top_left, dimensions, start_color, end_color, steps) => {
-            //todo: overflows and shit
-            //
             window_writer.draw_gradient(top_left, dimensions, start_color, end_color, steps);
           },
         }

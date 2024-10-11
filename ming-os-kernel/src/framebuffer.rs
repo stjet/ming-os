@@ -10,7 +10,8 @@ pub type Point = [usize; 2]; //x, y
 pub type Dimensions = [usize; 2]; //width, height
 pub type RGBColor = [u8; 3]; //rgb
 
-type Font = (&'static str, Vec<(char, Vec<Vec<u8>>, u8)>, u8);
+type FontChar = (char, Vec<Vec<u8>>, u8);
+type Font = (&'static str, Vec<FontChar>, u8);
 type Fonts = Vec<Font>; //...yeah
 
 lazy_static! {
@@ -40,6 +41,15 @@ fn color_with_alpha(color: RGBColor, bg_color: RGBColor, alpha: u8) -> RGBColor 
     (bg_color[1] as u16 * (255 - alpha) / 255) as u8 + (color[1] as u16 * alpha / 255) as u8,
     (bg_color[2] as u16 * (255 - alpha) / 255) as u8 + (color[2] as u16 * alpha / 255) as u8,
   ]
+}
+
+pub fn get_char_info(font: &Font, c: char) -> Option<&FontChar> {
+  for tri in &font.1 {
+    if tri.0 == c {
+      return Some(tri);
+    }
+  }
+  return None;
 }
 
 //currently doesn't check if writing onto next line accidentally
@@ -114,25 +124,18 @@ impl<'a> FrameBufferWriter<'a> {
     }
   }
 
-  pub fn draw_char(&mut self, top_left: Point, font: &Font, c: char, color: RGBColor, bg_color: RGBColor) -> Option<usize> {
-    for tri in &font.1 {
-      if tri.0 == c {
-        let mut start_pos;
-        for row in 0..tri.1.len() {
-          //tri.2 is vertical offset
-          start_pos = ((top_left[1] + row + tri.2 as usize) * self.info.stride + top_left[0]) * self.info.bytes_per_pixel;
-          for col in &tri.1[row] {
-            if col > &0 {
-              self._draw_pixel(start_pos, color_with_alpha(color, bg_color, *col));
-            }
-            start_pos += self.info.bytes_per_pixel;
-          }
+  pub fn draw_char(&mut self, top_left: Point, char_info: &FontChar, color: RGBColor, bg_color: RGBColor) {
+    let mut start_pos;
+    for row in 0..char_info.1.len() {
+      //char_info.2 is vertical offset
+      start_pos = ((top_left[1] + row + char_info.2 as usize) * self.info.stride + top_left[0]) * self.info.bytes_per_pixel;
+      for col in &char_info.1[row] {
+        if col > &0 {
+          self._draw_pixel(start_pos, color_with_alpha(color, bg_color, *col));
         }
-        //returns char width
-        return Some(tri.1[0].len());
+        start_pos += self.info.bytes_per_pixel;
       }
     }
-    return None;
   }
 
   //dots
@@ -214,7 +217,7 @@ impl<'a> FrameBufferWriter<'a> {
 
   //text
 
-  pub fn draw_text(&mut self, top_left: Point, font_name: &str, text: &str, color: RGBColor, bg_color: RGBColor, horiz_spacing: usize) {
+  pub fn draw_text(&mut self, top_left: Point, font_name: &str, text: &str, color: RGBColor, bg_color: RGBColor, horiz_spacing: usize, mono_width: Option<u8>) {
     let mut top_left = top_left;
     //todo, config space
     for font in &*FONTS {
@@ -223,8 +226,25 @@ impl<'a> FrameBufferWriter<'a> {
           if c == ' ' {
             top_left[0] += 5;
           } else {
-            let char_width = self.draw_char(top_left, &font, c, color, bg_color).unwrap_or(0);
-            top_left[0] += char_width + horiz_spacing;
+            let char_info = get_char_info(font, c);
+            if let Some(char_info) = char_info {
+              let char_width = char_info.1[0].len();
+              let add_after: usize;
+              if let Some(mono_width) = mono_width {
+                let mono_width = mono_width as usize;
+                let remainder = if mono_width < char_width {
+                  0
+                } else {
+                  mono_width - char_width
+                };
+                top_left[0] += remainder / 2;
+                add_after = remainder - remainder / 2 + char_width;
+              } else {
+                add_after = char_width + horiz_spacing;
+              }
+              self.draw_char(top_left, char_info, color, bg_color);
+              top_left[0] += add_after;
+            }
           }
         }
       }
