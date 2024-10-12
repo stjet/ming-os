@@ -67,6 +67,8 @@ pub enum ShortcutType {
   QuitWindow,
   MoveWindow(Direction),
   MoveWindowToEdge(Direction),
+  CenterWindow,
+  FullscreenWindow,
   //
 }
 
@@ -86,5 +88,6 @@ pub enum WindowMessage {
   Focus,
   Unfocus,
   FocusClick,
+  ChangeDimensions(Dimensions),
   //
 }

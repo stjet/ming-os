@@ -127,6 +127,7 @@ pub struct WindowLikeInfo {
   top_left: Point,
   dimensions: Dimensions,
   workspace: Workspace,
+  fullscreen: bool,
 }
 
 impl fmt::Debug for WindowLikeInfo {
@@ -174,6 +175,7 @@ impl WindowManager {
       } else {
         Workspace::All
       },
+      fullscreen: false,
     });
   }
 
@@ -252,6 +254,8 @@ impl WindowManager {
                 ('s', ShortcutType::StartMenu),
                 (']', ShortcutType::FocusNextWindow),
                 ('q', ShortcutType::QuitWindow),
+                ('c', ShortcutType::CenterWindow),
+                ('f', ShortcutType::FullscreenWindow),
                 //move window a small amount
                 ('h', ShortcutType::MoveWindow(Direction::Left)),
                 ('j', ShortcutType::MoveWindow(Direction::Down)),
@@ -300,7 +304,7 @@ impl WindowManager {
                   &ShortcutType::MoveWindow(direction) | &ShortcutType::MoveWindowToEdge(direction) => {
                     if let Some(focused_index) = self.get_focused_index() {
                       let focused_info = &self.window_infos[focused_index];
-                      if focused_info.window_like.subtype() == WindowLikeType::Window {
+                      if focused_info.window_like.subtype() == WindowLikeType::Window && !focused_info.fullscreen {
                         let delta = 15;
                         let window_x = self.window_infos[focused_index].top_left[0];
                         let window_y = self.window_infos[focused_index].top_left[1];
@@ -404,6 +408,34 @@ impl WindowManager {
                       }
                     }
                   },
+                  &ShortcutType::CenterWindow => {
+                    if let Some(focused_index) = self.get_focused_index() {
+                      let window_dimensions = &self.window_infos[focused_index].dimensions;
+                      self.window_infos[focused_index].top_left = [self.dimensions[0] / 2 - window_dimensions[0] / 2, self.dimensions[1] / 2 - window_dimensions[1] / 2];
+                      use_saved_buffer = true;
+                      press_response = WindowMessageResponse::JustRerender;
+                    }
+                  },
+                  &ShortcutType::FullscreenWindow => {
+                    if let Some(focused_index) = self.get_focused_index() {
+                      let window_like = &self.window_infos[focused_index].window_like;
+                      if window_like.subtype() == WindowLikeType::Window && window_like.resizable() {
+                        //toggle fullscreen
+                        self.window_infos[focused_index].fullscreen ^= true;
+                        //todo: send message to window about resize
+                        let new_dimensions;
+                        if self.window_infos[focused_index].fullscreen {
+                          new_dimensions = [self.dimensions[0], self.dimensions[1] - TASKBAR_HEIGHT - INDICATOR_HEIGHT];
+                          self.window_infos[focused_index].top_left = [0, INDICATOR_HEIGHT];
+                          redraw_ids = Some(vec![self.window_infos[focused_index].id]);
+                        } else {
+                          new_dimensions = self.window_infos[focused_index].dimensions;
+                        }
+                        self.window_infos[focused_index].window_like.handle_message(WindowMessage::ChangeDimensions(new_dimensions));
+                        press_response = WindowMessageResponse::JustRerender;
+                      }
+                    }
+                  }
                 };
               }
             } else {
@@ -515,36 +547,41 @@ impl WindowManager {
     let mut w_index = 0;
     for window_info in redraw_windows {
       //unsafe { SERIAL1.lock().write_text(&format!("{:?}\n", &window_info.window_like.subtype())); }
+      let window_dimensions = if window_info.fullscreen {
+        [self.dimensions[0], self.dimensions[1] - TASKBAR_HEIGHT - INDICATOR_HEIGHT]
+      } else {
+        window_info.dimensions
+      };
       let mut instructions = Vec::new();
       if window_info.window_like.subtype() == WindowLikeType::Window {
         //if this is the top most window to draw, snapshot
-        if w_index == max_index && !use_saved_buffer {
+        if w_index == max_index && !use_saved_buffer && redraw_ids.len() == 0 {
           WRITER.lock().save_buffer();
         }
         //draw window background
-        instructions.push(DrawInstructions::Rect([0, 0], window_info.dimensions, theme_info.background));
+        instructions.push(DrawInstructions::Rect([0, 0], window_dimensions, theme_info.background));
       }
       instructions.extend(window_info.window_like.draw(&theme_info));
       if window_info.window_like.subtype() == WindowLikeType::Window {
         //draw window top decorations and what not
         instructions.extend(vec![
           //left top border
-          DrawInstructions::Rect([0, 0], [window_info.dimensions[0], 1], theme_info.border_left_top),
-          DrawInstructions::Rect([0, 0], [1, window_info.dimensions[1]], theme_info.border_left_top),
+          DrawInstructions::Rect([0, 0], [window_dimensions[0], 1], theme_info.border_left_top),
+          DrawInstructions::Rect([0, 0], [1, window_dimensions[1]], theme_info.border_left_top),
           //top
-          DrawInstructions::Rect([1, 1], [window_info.dimensions[0] - 2, WINDOW_TOP_HEIGHT - 3], theme_info.top),
+          DrawInstructions::Rect([1, 1], [window_dimensions[0] - 2, WINDOW_TOP_HEIGHT - 3], theme_info.top),
           DrawInstructions::Text([4, 4], "times-new-roman", window_info.window_like.title().to_string(), theme_info.text_top, theme_info.top, None),
           //top bottom border
-          DrawInstructions::Rect([1, WINDOW_TOP_HEIGHT - 2], [window_info.dimensions[0] - 2, 2], theme_info.border_left_top),
+          DrawInstructions::Rect([1, WINDOW_TOP_HEIGHT - 2], [window_dimensions[0] - 2, 2], theme_info.border_left_top),
           //right bottom border
-          DrawInstructions::Rect([window_info.dimensions[0] - 1, 1], [1, window_info.dimensions[1] - 1], theme_info.border_right_bottom),
-          DrawInstructions::Rect([1, window_info.dimensions[1] - 1], [window_info.dimensions[0] - 1, 1], theme_info.border_right_bottom),
+          DrawInstructions::Rect([window_dimensions[0] - 1, 1], [1, window_dimensions[1] - 1], theme_info.border_right_bottom),
+          DrawInstructions::Rect([1, window_dimensions[1] - 1], [window_dimensions[0] - 1, 1], theme_info.border_right_bottom),
         ]);
       }
       let mut window_writer: FrameBufferWriter = Default::default();
       let mut framebuffer_info = WRITER.lock().info;
-      let window_width = window_info.dimensions[0];
-      let window_height = window_info.dimensions[1];
+      let window_width = window_dimensions[0];
+      let window_height = window_dimensions[1];
       framebuffer_info.width = window_width;
       framebuffer_info.height = window_height;
       framebuffer_info.stride = window_width;
@@ -557,8 +594,8 @@ impl WindowManager {
           DrawInstructions::Rect(top_left, dimensions, color) => {
             //try and prevent overflows out of the window
             let true_dimensions = [
-              min(dimensions[0], window_info.dimensions[0] - top_left[0]),
-              min(dimensions[1], window_info.dimensions[1] - top_left[1]),
+              min(dimensions[0], window_dimensions[0] - top_left[0]),
+              min(dimensions[1], window_dimensions[1] - top_left[1]),
             ];
             window_writer.draw_rect(top_left, true_dimensions, color);
           },
@@ -573,7 +610,7 @@ impl WindowManager {
           },
         }
       }
-      WRITER.lock().draw_buffer(window_info.top_left, window_info.dimensions[1], window_info.dimensions[0] * framebuffer_info.bytes_per_pixel, &window_writer.get_buffer());
+      WRITER.lock().draw_buffer(window_info.top_left, window_dimensions[1], window_dimensions[0] * framebuffer_info.bytes_per_pixel, &window_writer.get_buffer());
       w_index += 1;
       //core::mem::drop(temp_vec);
     }

@@ -20,6 +20,8 @@ pub struct Terminal {
   current_input: String,
 }
 
+//for some reason key presses, then moving the window leaves the old window still there, behind it. weird
+
 impl WindowLike for Terminal {
   fn handle_message(&mut self, message: WindowMessage) -> WindowMessageResponse {
     match message {
@@ -32,6 +34,10 @@ impl WindowLike for Terminal {
       WindowMessage::KeyPress(key_press) => {
         self.current_input += &key_press.key.to_string();
         self.calc_actual_lines();
+        WindowMessageResponse::JustRerender
+      },
+      WindowMessage::ChangeDimensions(dimensions) => {
+        self.dimensions = dimensions;
         WindowMessageResponse::JustRerender
       },
       //
